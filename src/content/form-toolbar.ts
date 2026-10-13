@@ -16,7 +16,9 @@ export function mountFormToolbar(engine: AutoFillEngine) {
     button:focus-visible { outline: 3px solid #202124; outline-offset: 3px; }
     button:disabled { opacity: .6; cursor: default; }
     @media (max-width: 480px) { :host { right: 12px; bottom: 12px; } section { width: 240px; } }
-  </style><section aria-label="FormNimora"><strong>FormNimora</strong><p role="status" aria-live="polite">Tự điền các phần, gửi một phản hồi.</p><button type="button">Điền biểu mẫu</button></section>`;
+    header { display: flex; align-items: center; gap: 10px; }
+    header svg { width: 28px; height: 28px; flex: none; }
+  </style><section aria-label="FormNimora"><header><svg viewBox="0 0 256 256" aria-hidden="true"><g fill="#2548D8"><rect x="44" y="45" width="24" height="24" rx="8"/><rect x="88" y="45" width="124" height="24" rx="12"/><rect x="44" y="101" width="24" height="24" rx="8"/><rect x="88" y="101" width="88" height="24" rx="12"/><rect x="44" y="157" width="24" height="24" rx="8"/></g><path d="M88 169h62l22-22h37" fill="none" stroke="#2548D8" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/><circle cx="211" cy="147" r="10" fill="#FFAD42"/></svg><strong>FormNimora</strong></header><p role="status" aria-live="polite">Tự điền các phần, gửi một phản hồi.</p><button type="button">Điền biểu mẫu</button></section>`;
   const button = shadow.querySelector('button')!;
   const status = shadow.querySelector('p')!;
   let starting = false;

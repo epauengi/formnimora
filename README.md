@@ -1,5 +1,7 @@
 # FormNimora
 
+Logo identity: Form cadence. Editable masters in `assets/brand/`; Chrome icons in `public/icons/formnimora-*.png`.
+
 Chrome Extension Manifest V3, TypeScript, React 19, Tailwind CSS 4 và Vite. Điền Google Forms trên **trang trả lời**, không trên trang chỉnh sửa. Chế độ thường không gửi; nút **Điền biểu mẫu** tự chọn ngẫu nhiên, chuyển phần và gửi **một phản hồi**, sau xác nhận rõ ràng của người dùng.
 
 ## Quyền Google Forms và kiểm thử chuyển trang
