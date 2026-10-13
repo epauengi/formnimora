@@ -4,22 +4,90 @@ import { checked, enabled, setText, sleep, visible } from './dom-utils';
 import { pageSignature, scanForm, type DOMQuestion } from './form-scanner';
 import { planAnswer, validateAnswer, validateFillSettings } from './answer-planner';
 
-const initial = (): EngineState => ({ phase: 'idle', questions: [], answers: [], completed: 0, failed: 0, page: 1, logs: [] });
+export function toViewformUrl(urlStr: string): string {
+  try {
+    const url = new URL(urlStr);
+    if (!url.protocol.startsWith('http')) throw new Error('Not http');
+    const cleanedPath = url.pathname.replace(/(?:viewform|formResponse)\/?$/, 'viewform');
+    return `${url.origin}${cleanedPath}`;
+  } catch {
+    return urlStr.split(/[?#]/, 1)[0].replace(/(?:viewform|formResponse)\/?$/, 'viewform');
+  }
+}
+
+export function formatFormConfirmUrl(baseFormUrl: string, currentUrlStr?: string): string {
+  const current = currentUrlStr || (typeof location !== 'undefined' ? location.href : '');
+  let base = toViewformUrl(baseFormUrl || current);
+  if (!/\/forms\/u\/\d+\//.test(base)) {
+    const userMatch = current.match(/\/forms\/u\/(\d+)\//);
+    if (userMatch) base = base.replace(/\/forms\/(?:d\/)/, `/forms/u/${userMatch[1]}/d/`);
+  }
+  return `${base}?usp=form_confirm`;
+}
+
+export function isConfirmationPage(): boolean {
+  if (scanForm().length > 0) return false;
+  if (typeof location !== 'undefined' && /\/formResponse\/?$/i.test(location.pathname)) return true;
+  const text = (typeof document !== 'undefined' ? (document.body?.innerText || document.body?.textContent || '') : '').normalize('NFC').toLowerCase();
+  const accepted = /câu trả lời của bạn đã được ghi|your response has been recorded|phản hồi của bạn đã được ghi|gửi ý kiến phản hồi khác|submit another response/i;
+  return accepted.test(text);
+}
+
+const initial = (): EngineState => ({ phase: 'idle', questions: [], answers: [], completed: 0, failed: 0, page: 1, logs: [], submitted: 0, target: 1 });
 export class AutoFillEngine {
   state = initial();
+  constructor(private readonly navigate: (url: string) => void = url => location.assign(url), private readonly currentUrl: () => string = () => location.href) {}
   private controller?: AbortController;
   private settings = DEFAULT_FILL;
   private previewSignature = '';
+  private formUrl = '';
+  private resumeAfterConfirm = false;
   private log(message: string) { this.state.logs = [...this.state.logs.slice(-49), message]; }
   private scan() { this.state.questions = scanForm().map(item => item.question); }
   private async clearRun() { await chrome.runtime.sendMessage({ type: 'CLEAR_RUN' }); }
-  resume(settings: FillSettings, state: EngineState) {
+  resume(settings: FillSettings, state: EngineState, resumeAfterConfirm = false, formUrl?: string) {
     if (this.controller || this.state.phase !== 'idle') return;
     validateFillSettings(settings);
     this.settings = structuredClone(settings);
-    this.state = { ...structuredClone(state), questions: [], answers: [], phase: 'planning' };
+    this.formUrl = formUrl || toViewformUrl(this.currentUrl());
+    this.resumeAfterConfirm = resumeAfterConfirm;
+    this.state = { ...structuredClone(state), questions: [], answers: [] };
     this.controller = new AbortController();
-    void this.run(this.controller, false, true);
+    void this.handleResume(this.controller);
+  }
+  private async handleResume(controller: AbortController) {
+    if (isConfirmationPage()) {
+      const current = this.state.submitted || 0;
+      const target = this.state.target || 1;
+      this.log(`Google Forms xác nhận phản hồi ${current}/${target}.`);
+      if (current >= target) {
+        this.state.phase = 'done';
+        await this.clearRun();
+        this.log(`Đã hoàn thành toàn bộ ${current}/${target} phản hồi.`);
+        if (this.controller === controller) this.controller = undefined;
+        return;
+      }
+      this.log(`Chuẩn bị gửi phản hồi tiếp theo (${current + 1}/${target})...`);
+      const progress: EngineState = {
+        ...this.state,
+        phase: 'planning',
+        page: 1,
+        questions: [],
+        answers: [],
+      };
+      await chrome.runtime.sendMessage({
+        type: 'SAVE_RUN',
+        settings: this.settings,
+        state: progress,
+        formUrl: this.formUrl,
+        resumeAfterConfirm: true,
+      });
+      const nextUrl = formatFormConfirmUrl(this.formUrl, this.currentUrl());
+      this.navigate(nextUrl);
+      return;
+    }
+    this.state.phase = 'planning';
+    void this.run(controller, false, true);
   }
   status(): EngineState { return structuredClone(this.state); }
   scanOnly(): EngineState {
@@ -36,11 +104,14 @@ export class AutoFillEngine {
     if (this.controller) throw new Error('Dừng tác vụ trước khi Reset.');
     this.state = initial(); this.scan(); this.log('Đã đặt lại tác vụ. Câu trả lời trên form được giữ nguyên.');
   }
-  start(settings: FillSettings) {
+  start(settings: FillSettings, quantity = 1) {
     if (this.controller || ['preview', 'planning', 'filling'].includes(this.state.phase)) throw new Error('Đang có tác vụ hoặc preview chưa xác nhận.');
     validateFillSettings(settings);
     if (settings.autoSubmit && (!settings.autoNext || settings.preview)) throw new Error('Điền & gửi cần chuyển trang tự động và tắt xem trước.');
-    this.settings = structuredClone(settings); this.state = initial();
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) throw new Error('Số phản hồi phải từ 1–100.');
+    this.settings = structuredClone(settings);
+    this.formUrl = toViewformUrl(this.currentUrl());
+    this.state = { ...initial(), target: settings.autoSubmit ? quantity : 1 };
     this.controller = new AbortController();
     this.state.phase = 'planning';
     void this.run(this.controller);
@@ -86,6 +157,7 @@ export class AutoFillEngine {
           await sleep(100, signal);
         }
         if (!mounted) throw new Error('Chưa xác nhận câu hỏi trang mới đã tải. Phần trống hoặc chưa sẵn sàng cần kiểm tra thủ công; chưa gửi.');
+        this.resumeAfterConfirm = false;
       }
       for (;;) {
         signal.throwIfAborted();
@@ -150,12 +222,54 @@ export class AutoFillEngine {
             this.assertSafeToAdvance();
             const submit = this.navigationButton(/^(submit|gửi)$/i);
             if (!submit) throw new Error('Không tìm thấy nút Gửi khả dụng. Chưa gửi biểu mẫu.');
-            await this.clearRun();
+            const currentSubmitted = this.state.submitted || 0;
+            const nextSubmitted = currentSubmitted + 1;
+            const target = this.state.target || 1;
             signal.throwIfAborted();
-            this.log('Đang gửi một lần. Không tự thử gửi lại.');
+            if (target > 1) {
+              const progress: EngineState = {
+                ...this.state,
+                submitted: nextSubmitted,
+                target,
+                phase: 'planning',
+                page: 1,
+                questions: [],
+                answers: [],
+              };
+              const saved = await chrome.runtime.sendMessage({
+                type: 'SAVE_RUN',
+                settings: this.settings,
+                state: progress,
+                formUrl: this.formUrl,
+                resumeAfterConfirm: true,
+              }) as Result<boolean>;
+              if (!saved?.ok) throw new Error('Không lưu được tiến trình trước khi gửi.');
+            } else {
+              await this.clearRun();
+            }
+            signal.throwIfAborted();
+            this.log(`Đang gửi phản hồi (${nextSubmitted}/${target})...`);
+            if (target > 1) navigationPending = true;
             submit.click();
-            await this.waitForSubmission(signal);
-            this.state.phase = 'done'; this.log('Google Forms xác nhận đã ghi nhận câu trả lời.'); return;
+            try {
+              await this.waitForSubmission(signal);
+            } catch (error) {
+              navigationPending = false;
+              throw error;
+            }
+            this.state.submitted = nextSubmitted;
+            this.log(`Google Forms xác nhận phản hồi ${nextSubmitted}/${target}.`);
+            if (nextSubmitted >= target) {
+              this.state.phase = 'done';
+              await this.clearRun();
+              navigationPending = false;
+              if (target > 1) this.log(`Đã hoàn thành toàn bộ ${nextSubmitted}/${target} phản hồi.`);
+              return;
+            }
+            navigationPending = true;
+            const nextUrl = formatFormConfirmUrl(this.formUrl, this.currentUrl());
+            this.navigate(nextUrl);
+            await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('Đã dừng', 'AbortError')), { once: true }));
           }
           break;
         }
@@ -185,7 +299,7 @@ export class AutoFillEngine {
         this.log(signal.aborted ? 'Đã dừng. Giữ nguyên câu trả lời.' : 'Hết thời gian chờ trang mới. Đã hủy tiến trình; chưa gửi.');
       }
     } finally {
-      await this.clearRun().catch(() => {});
+      if (!navigationPending) await this.clearRun().catch(() => {});
       if (this.controller === controller) this.controller = undefined;
     }
   }
@@ -207,10 +321,9 @@ export class AutoFillEngine {
     if (invalid || captcha || missing) throw new Error('Còn câu bắt buộc, dữ liệu không hợp lệ hoặc CAPTCHA. Đã dừng, chưa gửi.');
   }
   private async waitForSubmission(signal: AbortSignal) {
-    const accepted = /your response has been recorded|câu trả lời của bạn đã được ghi (?:lại|nhận)|phản hồi của bạn đã được ghi (?:lại|nhận)/i;
     for (let attempt = 0; attempt < 80; attempt++) {
       signal.throwIfAborted();
-      if (!scanForm().length && accepted.test(document.body.textContent || '')) return;
+      if (isConfirmationPage()) return;
       if ([...document.querySelectorAll('[aria-invalid="true"]')].some(visible)) throw new Error('Google Forms từ chối dữ liệu. Không tự gửi lại.');
       await sleep(100, signal);
     }

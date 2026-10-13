@@ -11,6 +11,8 @@ interface Checkpoint {
   form: string;
   documentId: string;
   savedAt: number;
+  resumeAfterConfirm?: boolean;
+  formUrl?: string;
   settings: FillSettings;
   state: EngineState;
 }
@@ -20,7 +22,8 @@ export function formIdentity(value: string): string | undefined {
     const url = new URL(value);
     if (url.origin !== 'https://docs.google.com' || url.username || url.password) return;
     if (!/^\/forms\/(?:u\/\d+\/)?d\/(?:e\/)?[\w-]+\/(?:viewform|formResponse)\/?$/.test(url.pathname)) return;
-    return url.origin + url.pathname.replace(/(?:viewform|formResponse)\/?$/, '');
+    const normalized = url.pathname.replace(/^\/forms\/(?:u\/\d+\/)?/, '/forms/').replace(/(?:viewform|formResponse)\/?$/, '');
+    return url.origin + normalized;
   } catch { return; }
 }
 
@@ -33,7 +36,10 @@ export function normalizeRunState(value: unknown): EngineState {
   if (!Number.isInteger(state.page) || (state.page as number) < 1 || (state.page as number) > 20 ||
       !['planning', 'filling'].includes(String(state.phase))) throw new Error('Invalid run checkpoint.');
   // Logs can contain question titles/provider answers. Persist counters only, never question/answer text.
-  return { phase: 'planning', questions: [], answers: [], completed: count(state.completed), failed: count(state.failed), page: state.page as number, logs: [] };
+  const submitted = count(state.submitted ?? 0);
+  const target = count(state.target ?? 1);
+  if (target < 1 || target > 100 || submitted > target) throw new Error('Invalid run checkpoint.');
+  return { phase: 'planning', questions: [], answers: [], completed: count(state.completed), failed: count(state.failed), page: state.page as number, logs: [], submitted, target };
 }
 
 function settings(value: unknown): FillSettings {
@@ -89,7 +95,17 @@ export async function handleRunMessage(message: unknown, sender: chrome.runtime.
       await ready;
       switch (data.type) {
         case 'SAVE_RUN': {
-          const checkpoint: Checkpoint = { form, documentId: sender.documentId!, savedAt: Date.now(), settings: settings(data.settings), state: normalizeRunState(data.state) };
+          if (data.resumeAfterConfirm !== undefined && typeof data.resumeAfterConfirm !== 'boolean') throw new Error('Invalid run checkpoint.');
+          if (data.formUrl !== undefined && (typeof data.formUrl !== 'string' || !data.formUrl.startsWith('https://docs.google.com/forms/'))) throw new Error('Invalid run checkpoint.');
+          const checkpoint: Checkpoint = {
+            form,
+            documentId: sender.documentId!,
+            savedAt: Date.now(),
+            resumeAfterConfirm: data.resumeAfterConfirm === true,
+            formUrl: typeof data.formUrl === 'string' ? data.formUrl : undefined,
+            settings: settings(data.settings),
+            state: normalizeRunState(data.state),
+          };
           await chrome.storage.session.set({ [key(tab!)]: checkpoint });
           return { ok: true, data: true };
         }
@@ -98,7 +114,15 @@ export async function handleRunMessage(message: unknown, sender: chrome.runtime.
           if (!checkpoint || checkpoint.documentId === sender.documentId) return { ok: true, data: null };
           // Consume before replying, including concurrent init messages: no duplicate resume or submit.
           await remove(tab!);
-          return { ok: true, data: { settings: checkpoint.settings, state: checkpoint.state } };
+          return {
+            ok: true,
+            data: {
+              settings: checkpoint.settings,
+              state: checkpoint.state,
+              resumeAfterConfirm: checkpoint.resumeAfterConfirm === true,
+              ...(checkpoint.formUrl ? { formUrl: checkpoint.formUrl } : {}),
+            },
+          };
         }
         case 'CLEAR_RUN': {
           const checkpoint = (await chrome.storage.session.get(key(tab!)))[key(tab!)];

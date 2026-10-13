@@ -37,7 +37,7 @@ test('checkpoint security, normalization and document-bound at-most-once resume'
   assert.deepEqual(await resume(), { ok: true, data: null });
   assert.ok(checkpoint());
   const results = await Promise.all([resume({ documentId: 'document-two' }), resume({ documentId: 'document-two' })]);
-  assert.deepEqual(results[0], { ok: true, data: { settings: fill, state: { phase: 'planning', questions: [], answers: [], completed: 3, failed: 0, page: 2, logs: [] } } });
+  assert.deepEqual(results[0], { ok: true, data: { settings: fill, state: { phase: 'planning', questions: [], answers: [], completed: 3, failed: 0, page: 2, logs: [], submitted: 0, target: 1 }, resumeAfterConfirm: false } });
   assert.deepEqual(results[1], { ok: true, data: null });
   assert.equal(checkpoint(), undefined);
   assert.deepEqual(await resume({ documentId: 'document-three' }), { ok: true, data: null });

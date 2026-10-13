@@ -19,11 +19,12 @@ export interface APISettings {
 export interface EngineState {
   phase: 'idle' | 'planning' | 'preview' | 'filling' | 'done' | 'stopped' | 'error';
   questions: Question[]; answers: Answer[]; completed: number; failed: number; page: number; logs: string[];
+  submitted?: number; target?: number;
 }
-export type ContentCommand = { type: 'SCAN' | 'STATUS' | 'STOP' | 'RESET' } | { type: 'START'; settings: FillSettings } | { type: 'APPLY'; answers: Answer[] };
+export type ContentCommand = { type: 'SCAN' | 'STATUS' | 'STOP' | 'RESET' } | { type: 'START'; settings: FillSettings; quantity?: number } | { type: 'APPLY'; answers: Answer[] };
 export interface Result<T> { ok: boolean; data?: T; error?: string }
 export const DEFAULT_FILL: FillSettings = {
-  mode: 'random', aiText: false, delay: 350, checkboxCount: 1, autoNext: false, autoSubmit: false,
+  mode: 'random', aiText: false, delay: 350, checkboxCount: 4, autoNext: false, autoSubmit: false,
   skipAnswered: true, preview: true, rules: [], personalContext: '', answerLength: 'medium', language: 'auto', dark: false,
 };
 export const DEFAULT_API: APISettings = {

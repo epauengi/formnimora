@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { AutoFillEngine } from '../src/content/auto-filler';
+import { AutoFillEngine, formatFormConfirmUrl } from '../src/content/auto-filler';
 import { DEFAULT_FILL } from '../src/types';
 function setup() {
   const dom = new JSDOM(`<div role="listitem"><h2 role="heading">Màu sắc</h2><div role="radiogroup"><div role="radio" aria-label="Đỏ" aria-checked="false"></div><div role="radio" aria-label="Xanh" aria-checked="false"></div></div></div><button type="button">Submit</button>`);
   for (const key of ['HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLSelectElement', 'HTMLOptionElement', 'HTMLButtonElement', 'Event', 'MutationObserver'] as const) Object.assign(globalThis, { [key]: dom.window[key] });
-  Object.assign(globalThis, { document: dom.window.document, getComputedStyle: dom.window.getComputedStyle.bind(dom.window), chrome: { runtime: { sendMessage: async () => ({ ok: true, data: true }) } } });
+  Object.assign(globalThis, { document: dom.window.document, location: dom.window.location, getComputedStyle: dom.window.getComputedStyle.bind(dom.window), chrome: { runtime: { sendMessage: async () => ({ ok: true, data: true }) } } });
   for (const radio of dom.window.document.querySelectorAll('[role="radio"]')) radio.addEventListener('click', () => {
     dom.window.document.querySelectorAll('[role="radio"]').forEach(item => item.setAttribute('aria-checked', String(item === radio)));
   });
@@ -51,15 +51,19 @@ test('native dropdown fills, verifies and Reset preserves value', async () => {
   assert.ok(doc.querySelector('select')!.value);
   engine.reset(); assert.ok(doc.querySelector('select')!.value);
 });
-test('checkbox grid selects configured count per row', async () => {
+test('random checkbox grid selects one through all choices independently per row', async () => {
   const doc = setup();
   const row = (name: string) => `<div role="group" aria-label="${name}"><div role="checkbox" aria-label="A" aria-checked="false"></div><div role="checkbox" aria-label="B" aria-checked="false"></div></div>`;
   doc.querySelector('[role="listitem"]')!.innerHTML = `<h2 role="heading">Bảng đánh giá</h2>${row('Hàng 1')}${row('Hàng 2')}`;
   doc.querySelectorAll('[role="checkbox"]').forEach(control => control.addEventListener('click', () => control.setAttribute('aria-checked', String(control.getAttribute('aria-checked') !== 'true'))));
-  const engine = new AutoFillEngine();
-  engine.start({ ...DEFAULT_FILL, preview: false, checkboxCount: 2, delay: 0 });
-  await waitFor(engine, 'done');
-  assert.equal(engine.state.failed, 0); assert.equal(doc.querySelectorAll('[aria-checked="true"]').length, 4);
+  const originalRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    const engine = new AutoFillEngine();
+    engine.start({ ...DEFAULT_FILL, preview: false, delay: 0 });
+    await waitFor(engine, 'done');
+    assert.equal(engine.state.failed, 0); assert.equal(doc.querySelectorAll('[aria-checked="true"]').length, 4);
+  } finally { Math.random = originalRandom; }
 });
 test('autoNext observes next page and stops before Submit', async () => {
   const doc = setup(); let submits = 0;
@@ -89,6 +93,20 @@ test('one-click run goes Next and submits exactly once after confirmation opt-in
   await waitFor(engine, 'done');
   assert.equal(engine.state.page, 2); assert.equal(submits, 1);
   assert.match(engine.state.logs.at(-1)!, /xác nhận/);
+});
+test('multiple submissions reload the saved form URL with form_confirm', async () => {
+  const doc = setup(); let submits = 0; let navigated = '';
+  doc.querySelector('button')!.addEventListener('click', () => { submits++; doc.body.innerHTML = '<p>Câu trả lời của bạn đã được ghi lại.</p>'; });
+  const engine = new AutoFillEngine(url => { navigated = url; }, () => 'https://docs.google.com/forms/d/e/form-id/viewform?usp=other');
+  try {
+    engine.start({ ...DEFAULT_FILL, preview: false, autoNext: true, autoSubmit: true, delay: 0 }, 2);
+    const deadline = Date.now() + 2000;
+    while (!navigated && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(submits, 1);
+    assert.equal(navigated, 'https://docs.google.com/forms/d/e/form-id/viewform?usp=form_confirm');
+    assert.equal(engine.state.submitted, 1); assert.equal(engine.state.target, 2);
+    engine.stop(); await waitFor(engine, 'stopped');
+  } finally { engine.stop(); }
 });
 test('Google Forms Send matches individual captions, not concatenated names', async () => {
   for (const markup of [
@@ -281,4 +299,34 @@ test('Stop cancels planning, rejects overlapping task until settled and preserve
   await waitFor(engine, 'stopped');
   await new Promise(resolve => setTimeout(resolve, 20));
   engine.reset(); assert.equal(engine.state.phase, 'idle');
+});
+test('resume on confirmation page navigates when more submissions remain or completes when done', async () => {
+  const doc = setup();
+  doc.body.innerHTML = '<p>Câu trả lời của bạn đã được ghi lại.</p><a href="https://docs.google.com/forms/d/e/form-1/viewform?usp=form_confirm">Gửi ý kiến phản hồi khác</a>';
+  let navigated = '';
+  const engine = new AutoFillEngine(url => { navigated = url; }, () => 'https://docs.google.com/forms/d/e/form-1/formResponse');
+  engine.resume({ ...DEFAULT_FILL, autoNext: true, autoSubmit: true }, { ...engine.status(), submitted: 1, target: 2, phase: 'planning' });
+  const deadline = Date.now() + 1000;
+  while (!navigated && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(navigated, 'https://docs.google.com/forms/d/e/form-1/viewform?usp=form_confirm');
+
+  const finalEngine = new AutoFillEngine(url => { navigated = url; }, () => 'https://docs.google.com/forms/d/e/form-1/formResponse');
+  finalEngine.resume({ ...DEFAULT_FILL, autoNext: true, autoSubmit: true }, { ...finalEngine.status(), submitted: 2, target: 2, phase: 'planning' });
+  await waitFor(finalEngine, 'done');
+  assert.equal(finalEngine.state.submitted, 2);
+  assert.equal(finalEngine.state.phase, 'done');
+});
+test('formatFormConfirmUrl preserves /u/0/ and prevents AccountChooser redirects', () => {
+  assert.equal(
+    formatFormConfirmUrl('https://docs.google.com/forms/u/0/d/e/form-1/viewform'),
+    'https://docs.google.com/forms/u/0/d/e/form-1/viewform?usp=form_confirm'
+  );
+  assert.equal(
+    formatFormConfirmUrl('https://docs.google.com/forms/d/e/form-1/viewform', 'https://docs.google.com/forms/u/0/d/e/form-1/formResponse'),
+    'https://docs.google.com/forms/u/0/d/e/form-1/viewform?usp=form_confirm'
+  );
+  assert.equal(
+    formatFormConfirmUrl('https://docs.google.com/forms/d/e/form-1/viewform'),
+    'https://docs.google.com/forms/d/e/form-1/viewform?usp=form_confirm'
+  );
 });

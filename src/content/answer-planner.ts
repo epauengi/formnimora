@@ -40,9 +40,13 @@ export async function planAnswer(question: Question, settings: FillSettings, sig
     return result.data;
   }
   const rule = settings.mode === 'rules' ? settings.rules.find(rule => question.title.toLocaleLowerCase().includes(rule.contains.trim().toLocaleLowerCase()) && rule.contains.trim()) : undefined;
-  const count = question.kind === 'checkbox' || question.kind === 'checkbox-grid' ? settings.checkboxCount : 1;
-  if (question.kind.endsWith('grid')) return { questionId: question.id, rows: Object.fromEntries(question.rows.map(row => [row.id, choose(row.choices, count, rule?.answers)])) };
-  return { questionId: question.id, choices: choose(question.choices, count, rule?.answers) };
+  const countFor = (choices: Choice[]) => settings.mode === 'random' && question.kind === 'checkbox'
+    ? 1 + Math.floor(Math.random() * choices.length)
+    : settings.mode === 'random' && question.kind === 'checkbox-grid'
+      ? 1 + Math.floor(Math.random() * choices.length)
+      : question.kind === 'checkbox' || question.kind === 'checkbox-grid' ? settings.checkboxCount : 1;
+  if (question.kind.endsWith('grid')) return { questionId: question.id, rows: Object.fromEntries(question.rows.map(row => [row.id, choose(row.choices, countFor(row.choices), rule?.answers)])) };
+  return { questionId: question.id, choices: choose(question.choices, countFor(question.choices), rule?.answers) };
 }
 export function validateFillSettings(value: FillSettings): void {
   if (!value || !['random', 'rules', 'ai'].includes(value.mode) || !Number.isInteger(value.delay) || value.delay < 0 || value.delay > 5000 || !Number.isInteger(value.checkboxCount) || value.checkboxCount < 1 || value.checkboxCount > 20 || !Array.isArray(value.rules) || value.rules.length > 100 || value.rules.some(rule => typeof rule.contains !== 'string' || !Array.isArray(rule.answers) || rule.answers.some(answer => typeof answer !== 'string')) || typeof value.personalContext !== 'string' || value.personalContext.length > 6000 || !['short', 'medium', 'long'].includes(value.answerLength) || !['auto', 'vi', 'en'].includes(value.language) || ['aiText', 'autoNext', 'autoSubmit', 'skipAnswered', 'preview', 'dark'].some(key => typeof value[key as keyof FillSettings] !== 'boolean')) {

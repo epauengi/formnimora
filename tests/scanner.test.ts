@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { classifyQuestion } from '../src/content/question-detector';
 import { scanForm } from '../src/content/form-scanner';
-import { choose, validateAnswer, validateFillSettings } from '../src/content/answer-planner';
+import { choose, planAnswer, validateAnswer, validateFillSettings } from '../src/content/answer-planner';
 import { DEFAULT_FILL } from '../src/types';
 function fixture(content: string) {
   const dom = new JSDOM(`<div role="list"><div role="listitem"><div role="heading">Câu hỏi *</div>${content}</div></div>`);
@@ -70,6 +70,18 @@ test('random selection distinct, clamped and rules exact with fallback', () => {
   assert.equal(choose(options, 1, ['missing']).length, 1);
   assert.equal(new Set(choose(options, 20)).size, 2);
   assert.throws(() => choose([], 1));
+});
+test('random checkbox answers select from one through every available choice', async () => {
+  const question = { id: 'q', title: 'Q', kind: 'checkbox' as const, choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }, { id: 'd', label: 'D' }, { id: 'e', label: 'E' }], rows: [], answered: false, required: true };
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    assert.equal((await planAnswer(question, DEFAULT_FILL, new AbortController().signal))?.choices?.length, 1);
+    Math.random = () => 0.99;
+    assert.equal((await planAnswer(question, DEFAULT_FILL, new AbortController().signal))?.choices?.length, 5);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 test('preview validation rejects invented ids, duplicates, empty answers and unsafe config', () => {
   const question = scanForm(fixture(radio('A') + radio('B')))[0].question;
