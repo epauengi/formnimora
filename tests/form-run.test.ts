@@ -43,6 +43,21 @@ test('checkpoint security, normalization and document-bound at-most-once resume'
   assert.deepEqual(await resume({ documentId: 'document-three' }), { ok: true, data: null });
 });
 
+test('stale document CLEAR_RUN preserves the newer document checkpoint', async () => {
+  await save();
+  assert.ok((await resume({ documentId: 'document-two' })).data);
+  const newerSender = { ...sender, documentId: 'document-two' };
+  assert.deepEqual(await handleRunMessage({ type: 'SAVE_RUN', settings: fill, state }, newerSender), { ok: true, data: true });
+  const newerCheckpoint = structuredClone(checkpoint());
+  assert.deepEqual(await handleRunMessage({ type: 'CLEAR_RUN' }, sender), { ok: true, data: true });
+  assert.deepEqual(checkpoint(), newerCheckpoint);
+  const results = await Promise.all([resume({ documentId: 'document-three' }), resume({ documentId: 'document-three' })]);
+  assert.equal(results[0].ok, true);
+  assert.ok(results[0].data);
+  assert.deepEqual(results[1], { ok: true, data: null });
+  assert.equal(checkpoint(), undefined);
+});
+
 test('same form accepts response URL, rejects other form/origin and clears pending', async () => {
   await save();
   const result = await resume({ documentId: 'document-two', url: url.replace('viewform', 'formResponse') + '?pageHistory=0,1' });

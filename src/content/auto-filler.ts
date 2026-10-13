@@ -1,6 +1,6 @@
 import type { Answer, EngineState, FillSettings, Result } from '../types';
 import { DEFAULT_FILL } from '../types';
-import { checked, enabled, label, setText, sleep, visible } from './dom-utils';
+import { checked, enabled, setText, sleep, visible } from './dom-utils';
 import { pageSignature, scanForm, type DOMQuestion } from './form-scanner';
 import { planAnswer, validateAnswer, validateFillSettings } from './answer-planner';
 
@@ -19,25 +19,25 @@ export class AutoFillEngine {
     this.settings = structuredClone(settings);
     this.state = { ...structuredClone(state), questions: [], answers: [], phase: 'planning' };
     this.controller = new AbortController();
-    void this.run(this.controller);
+    void this.run(this.controller, false, true);
   }
   status(): EngineState { return structuredClone(this.state); }
   scanOnly(): EngineState {
-    if (this.controller || this.state.phase === 'preview') throw new Error('Dừng tác vụ hoặc Reset preview trước khi quét lại.');
+    if (this.controller || ['preview', 'planning', 'filling'].includes(this.state.phase)) throw new Error('Dừng tác vụ hoặc Reset preview trước khi quét lại.');
     this.scan(); return this.status();
   }
   stop() {
     this.controller?.abort();
     void chrome.runtime.sendMessage({ type: 'CANCEL_AI' }).catch(() => {});
     void this.clearRun().catch(() => {});
-    if (this.controller || this.state.phase === 'preview') this.state.phase = 'stopped';
+    if (this.controller || ['preview', 'planning', 'filling'].includes(this.state.phase)) this.state.phase = 'stopped';
   }
   reset() {
     if (this.controller) throw new Error('Dừng tác vụ trước khi Reset.');
     this.state = initial(); this.scan(); this.log('Đã đặt lại tác vụ. Câu trả lời trên form được giữ nguyên.');
   }
   start(settings: FillSettings) {
-    if (this.controller || this.state.phase === 'preview') throw new Error('Đang có tác vụ hoặc preview chưa xác nhận.');
+    if (this.controller || ['preview', 'planning', 'filling'].includes(this.state.phase)) throw new Error('Đang có tác vụ hoặc preview chưa xác nhận.');
     validateFillSettings(settings);
     if (settings.autoSubmit && (!settings.autoNext || settings.preview)) throw new Error('Điền & gửi cần chuyển trang tự động và tắt xem trước.');
     this.settings = structuredClone(settings); this.state = initial();
@@ -63,9 +63,30 @@ export class AutoFillEngine {
     this.state.phase = 'filling';
     void this.run(this.controller, true);
   }
-  private async run(controller: AbortController, applyPreview = false) {
+  private async run(controller: AbortController, applyPreview = false, resumed = false) {
     const signal = controller.signal;
+    let navigationPending = false;
     try {
+      if (resumed) {
+        // Navigation may mount before questions. Never treat Send alone as readiness.
+        // ponytail: empty resumed sections stop for manual review; automatic empty-section handling needs a reliable Forms readiness signal.
+        const ready = () => {
+          const nodes = scanForm();
+          return nodes.length > 0 && nodes.every(item => item.text || item.dropdown || item.controls.size || item.rowControls.size) &&
+            !!this.navigationButton(/^(next|tiếp|tiếp theo|submit|gửi)$/i);
+        };
+        let mounted = false;
+        for (let attempt = 0; attempt < 150; attempt++) {
+          signal.throwIfAborted();
+          if (ready()) {
+            const before = pageSignature();
+            await sleep(300, signal);
+            if (ready() && pageSignature() === before) { mounted = true; break; }
+          }
+          await sleep(100, signal);
+        }
+        if (!mounted) throw new Error('Chưa xác nhận câu hỏi trang mới đã tải. Phần trống hoặc chưa sẵn sàng cần kiểm tra thủ công; chưa gửi.');
+      }
       for (;;) {
         signal.throwIfAborted();
         if (!applyPreview) {
@@ -141,29 +162,43 @@ export class AutoFillEngine {
         if (this.state.page >= 20) throw new Error('Đã chạm giới hạn 20 phần. Chưa gửi biểu mẫu.');
         this.assertSafeToAdvance();
         const before = pageSignature();
+        const previousHeadings = scanForm().map(item => item.root.querySelector('[role="heading"]')!);
         const checkpoint = await chrome.runtime.sendMessage({ type: 'SAVE_RUN', settings: this.settings, state: { ...this.state, page: this.state.page + 1 } }) as Result<boolean>;
         if (!checkpoint?.ok) throw new Error('Không lưu được tiến trình chuyển phần. Đã dừng.');
         signal.throwIfAborted();
+        navigationPending = true;
         next.click();
-        await this.waitForPage(before, signal);
+        await this.waitForPage(before, previousHeadings, signal);
         await this.clearRun();
+        navigationPending = false;
         this.state.page++; applyPreview = false;
       }
       this.state.phase = 'done'; this.log('Đã hoàn tất điền. Kiểm tra form và tự xác nhận gửi.');
     } catch (error) {
-      this.state.phase = signal.aborted ? 'stopped' : 'error';
+      this.state.phase = signal.aborted ? 'stopped' : navigationPending ? 'filling' : 'error';
       this.log(signal.aborted ? 'Đã dừng. Các câu trả lời đã điền được giữ nguyên.' : error instanceof Error ? error.message : 'Tác vụ thất bại.');
+      if (navigationPending && !signal.aborted) {
+        // ponytail: checkpoint expires after 2 minutes; longer navigation needs a longer TTL.
+        await sleep(105_000, signal).catch(() => {});
+        navigationPending = false;
+        this.state.phase = signal.aborted ? 'stopped' : 'error';
+        this.log(signal.aborted ? 'Đã dừng. Giữ nguyên câu trả lời.' : 'Hết thời gian chờ trang mới. Đã hủy tiến trình; chưa gửi.');
+      }
     } finally {
       await this.clearRun().catch(() => {});
       if (this.controller === controller) this.controller = undefined;
     }
   }
   private navigationButton(pattern: RegExp): HTMLElement | undefined {
-    // Native submit controls can be used only for the explicit final Send action.
-    return [...document.querySelectorAll<HTMLElement>('[role="button"], button')].find(button =>
-      visible(button) && enabled(button) && !button.closest('[role="listitem"]') &&
-      (!(button instanceof HTMLButtonElement) || button.type !== 'submit' || /^(submit|gửi)$/i.test(label(button))) &&
-      pattern.test(label(button).replace(/\s+/g, ' ').trim()));
+    // Google Forms can expose the visible caption separately from its accessible name.
+    return [...document.querySelectorAll<HTMLElement>('[role="button"], button')].find(button => {
+      if (!visible(button) || !enabled(button) || button.closest('[role="listitem"]')) return false;
+      const labelled = button.getAttribute('aria-labelledby')?.split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ');
+      const names = [button.innerText, button.textContent, button.getAttribute('aria-label'), labelled, button.getAttribute('title'), button.getAttribute('data-value')]
+        .filter((text): text is string => !!text).map(text => text.normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim());
+      return names.some(text => pattern.test(text) &&
+        (!(button instanceof HTMLButtonElement) || button.type !== 'submit' || /^(submit|gửi)$/i.test(text)));
+    });
   }
   private assertSafeToAdvance() {
     const invalid = [...document.querySelectorAll('[aria-invalid="true"], input:invalid, textarea:invalid, select:invalid')].some(visible);
@@ -236,24 +271,30 @@ export class AutoFillEngine {
         if (!control || !enabled(control)) throw new Error('Không có đáp án hợp lệ.');
         if (!checked(control)) clickOption(control);
       }
-      await sleep(80, signal);
-      if ([...controls].some(([id, control]) => checked(control) !== ids.includes(id))) throw new Error('Form chưa nhận đúng lựa chọn.');
+      // Forms may update aria-checked after its lazy controller finishes loading.
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await sleep(80, signal);
+        if ([...controls].every(([id, control]) => checked(control) === ids.includes(id))) return;
+      }
+      throw new Error('Form chưa nhận đúng lựa chọn.');
     };
     if (answer.rows) {
       for (const [rowId, ids] of Object.entries(answer.rows)) await select(item.rowControls.get(rowId)!, ids, item.question.kind === 'checkbox-grid');
     } else await select(item.controls, answer.choices!, item.question.kind === 'checkbox');
   }
-  private waitForPage(before: string, signal: AbortSignal): Promise<void> {
+  private waitForPage(before: string, previousHeadings: Element[], signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       let stable: ReturnType<typeof setTimeout> | undefined;
       const finish = (error?: Error) => { observer.disconnect(); clearTimeout(timeout); clearTimeout(stable); signal.removeEventListener('abort', abort); error ? reject(error) : resolve(); };
       const abort = () => finish(new DOMException('Đã dừng', 'AbortError'));
       const check = () => {
         clearTimeout(stable);
-        if (scanForm().length && pageSignature() !== before) stable = setTimeout(() => finish(), 300);
+        const questions = scanForm();
+        const replaced = questions.length > 0 && questions.every(item => !previousHeadings.includes(item.root.querySelector('[role="heading"]')!));
+        if (replaced && pageSignature() !== before && this.navigationButton(/^(next|tiếp|tiếp theo|submit|gửi)$/i)) stable = setTimeout(() => finish(), 300);
       };
       const observer = new MutationObserver(check);
-      const timeout = setTimeout(() => finish(new Error('Không chuyển trang được. Kiểm tra câu bắt buộc, xác thực hoặc CAPTCHA.')), 15000);
+      const timeout = setTimeout(() => finish(new Error('Chưa xác nhận chuyển trang. Giữ tiến trình chờ trang mới tối đa 2 phút; bấm Dừng điền để hủy. Kiểm tra xác thực hoặc CAPTCHA.')), 15000);
       observer.observe(document.body, { childList: true, subtree: true, attributes: true });
       signal.addEventListener('abort', abort, { once: true }); check();
     });

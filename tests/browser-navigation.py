@@ -3,22 +3,36 @@ from pathlib import Path
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import tempfile
+import time
+import json
 from playwright.sync_api import sync_playwright
 
 root = Path(__file__).resolve().parents[1]
-page_one = '''<div role="listitem"><h2 role="heading">Phần 1</h2><div role="radio" aria-label="A" aria-checked="false" onclick="this.setAttribute('aria-checked','true')">A</div></div><button type="button" onclick="location.href='/forms/d/e/navigation-fixture/formResponse'">Tiếp</button>'''
-page_two = '''<div role="listitem"><h2 role="heading">Phần 2</h2><div role="radio" aria-label="B" aria-checked="false" onclick="this.setAttribute('aria-checked','true')">B</div></div><button type="button" onclick="document.body.innerHTML='<p>Câu trả lời của bạn đã được ghi lại.</p>'; window.submits=(window.submits||0)+1">Gửi</button>'''
-with tempfile.TemporaryDirectory(prefix='forms-navigation-') as profile, sync_playwright() as p:
+page_one = '''<div role="listitem"><h2 role="heading">Phần 1</h2><div role="radio" aria-label="A" aria-checked="false" onclick="this.setAttribute('aria-checked','true')">A</div></div><div role="button" aria-label="Tiếp" data-value="Tiếp" onclick="location.href='/forms/d/e/navigation-fixture/formResponse'"><span>Tiếp</span></div>'''
+page_two = '''<div role="listitem"><div role="heading" aria-level="2">PHẦN 1. HOẠT ĐỘNG VÀ NHU CẦU</div></div><div role="listitem"><h2 role="heading">Phần 2</h2><div role="radio" aria-label="B" aria-checked="false" onclick="this.setAttribute('aria-checked','true')">B</div></div><div role="button" aria-label="Gửi" data-value="Gửi" onclick="document.body.innerHTML='<p>Câu trả lời của bạn đã được ghi lại.</p>'; window.submits=(window.submits||0)+1"><span>Gửi</span></div>'''
+profile_root = Path(tempfile.gettempdir()) / 'opencode'
+profile_root.mkdir(exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='forms-navigation-', dir=profile_root) as profile, sync_playwright() as p:
     context = p.chromium.launch_persistent_context(profile, channel='msedge', headless=True, args=[f'--disable-extensions-except={root / "dist"}', f'--load-extension={root / "dist"}'])
     try:
         worker = context.service_workers[0] if context.service_workers else context.wait_for_event('serviceworker')
         extension_id = worker.url.split('/')[2]
-        context.route('https://docs.google.com/forms/d/e/navigation-fixture/**', lambda route: route.fulfill(content_type='text/html; charset=utf-8', body=page_two if 'formResponse' in route.request.url else page_one))
+        destination_loads = 0
+        def serve_form(route):
+            global destination_loads
+            destination = 'formResponse' in route.request.url
+            body = page_one
+            if destination:
+                destination_loads += 1
+                if destination_loads == 1:
+                    time.sleep(16)  # First load exceeds the old document's navigation timeout.
+                # Send mounts first; content script must wait for the later questions.
+                question, navigation = page_two.split('<div role="button"', 1)
+                body = '<body><div role="button"' + navigation + '<script>setTimeout(() => document.body.insertAdjacentHTML("afterbegin", ' + json.dumps(question) + '), 700)</script></body>'
+            route.fulfill(content_type='text/html; charset=utf-8', body=body)
+        context.route('https://docs.google.com/forms/d/e/navigation-fixture/**', serve_form)
         form = context.new_page()
         form.goto('https://docs.google.com/forms/d/e/navigation-fixture/viewform')
-        options = context.new_page()
-        options.goto(f'chrome-extension://{extension_id}/options.html')
-        options.wait_for_selector('#model:enabled')
         # Locate the closed shadow control through browser debugging; page JS cannot access it.
         cdp = context.new_cdp_session(form)
         def toolbar_button():
@@ -43,6 +57,17 @@ with tempfile.TemporaryDirectory(prefix='forms-navigation-') as profile, sync_pl
         def click_toolbar():
             quad = cdp.send('DOM.getBoxModel', {'nodeId': toolbar_button()})['model']['border']
             form.mouse.click((quad[0] + quad[4]) / 2, (quad[1] + quad[5]) / 2)
+        # First accepted run on a fresh install, before opening extension UI or saving settings.
+        form.wait_for_selector('#forms-ai-toolbar')
+        form.once('dialog', lambda dialog: dialog.accept())
+        click_toolbar()
+        form.wait_for_url('**/formResponse', timeout=30000)
+        form.get_by_text('Câu trả lời của bạn đã được ghi lại.', exact=True).wait_for(timeout=15000)
+        assert form.evaluate('window.submits') == 1
+        form.goto('https://docs.google.com/forms/d/e/navigation-fixture/viewform')
+        options = context.new_page()
+        options.goto(f'chrome-extension://{extension_id}/options.html')
+        options.wait_for_selector('#model:enabled')
         # Start without opening the popup, scripting injection or toolbar activeTab grant.
         options.wait_for_function('''async () => {
           const tab = (await chrome.tabs.query({})).find(t => t.url?.includes('navigation-fixture'));
@@ -87,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='forms-navigation-') as profile, sync_pl
         form.once('dialog', lambda dialog: dialog.accept())
         click_toolbar()
         try:
-            form.wait_for_url('**/formResponse', timeout=15000)
+            form.wait_for_url('**/formResponse', timeout=30000)
         except Exception:
             print('ENGINE', options.evaluate('''async () => { const tab = (await chrome.tabs.query({})).find(t => t.url?.includes('navigation-fixture')); return await chrome.tabs.sendMessage(tab.id,{type:'STATUS'}); }'''))
             print('DOM', form.content())
@@ -99,6 +124,6 @@ with tempfile.TemporaryDirectory(prefix='forms-navigation-') as profile, sync_pl
           const result = await chrome.tabs.sendMessage(tab.id,{type:'STATUS'});
           return result.data?.phase === 'done' && result.data.page === 2 && result.data.completed === 2;
         }''')
-        print('PASS: manifest injection, full-document Next, checkpoint resume, both pages filled, exactly one Submit; no real Google requests.')
+        print('PASS: fresh first run, 16s navigation, delayed destination DOM, repeated run, checkpoint resume, decomposed Forms captions, exactly one Submit per run; no real Google requests.')
     finally:
         context.close()

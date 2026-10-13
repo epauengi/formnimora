@@ -8,7 +8,7 @@ Chrome Extension Manifest V3, TypeScript, React 19, Tailwind CSS 4 và Vite. Đi
 
 Extension cần quyền `https://docs.google.com/forms/*` để Chrome nạp `content.js` sau mỗi lần bấm Tiếp tải trang mới. Không chạy trên các trang Google Docs khác. Chrome match pattern giới hạn script theo đường dẫn; quyền host được Chrome quản lý theo máy chủ. Sau cập nhật, chấp nhận quyền nếu Chrome yêu cầu và tải lại tab form.
 
-Kiểm thử hồi quy full-document navigation (không gửi mạng đến Google): sau build, chạy `python tests/browser-navigation.py` khi có Python Playwright và Microsoft Edge. Test nạp extension thật, mở form fixture được intercept, tự điền hai phần qua tải tài liệu mới, xác nhận Submit đúng một lần.
+Kiểm thử hồi quy full-document navigation (không gửi mạng đến Google): sau build, chạy `python tests/browser-navigation.py` khi có Python Playwright và Microsoft Edge. Test nạp extension thật trên hồ sơ mới, chạy ngay lần đầu, mô phỏng chuyển trang chậm 16 giây và DOM trang đích xuất hiện muộn, kiểm tra nhãn tiếng Việt Unicode tổ hợp, xác nhận Gửi đúng một lần mỗi tác vụ. Không gửi dữ liệu tới Google.
 
 ## Điền và gửi toàn bộ bằng một nút
 
@@ -19,7 +19,7 @@ Kiểm thử hồi quy full-document navigation (không gửi mạng đến Goog
 
 Nút trên form dùng cài đặt đã lưu trong extension, không nhận API Key. Nếu bật AI tự luận, xác nhận trên form bao gồm việc gửi câu hỏi và ngữ cảnh cá nhân tới API đã cấu hình.
 
-Chỉ dùng dữ liệu thử khi có quyền. Câu tự luận bắt buộc cần bật AI trong Settings hoặc điền sẵn. Extension không bịa đáp án cá nhân, không vượt CAPTCHA/xác thực. Khi có lỗi, thiếu câu bắt buộc hoặc không xác nhận được kết quả gửi, extension dừng và **không tự thử gửi lại**.
+Chỉ dùng dữ liệu thử khi có quyền. Câu tự luận bắt buộc cần bật AI trong Settings hoặc điền sẵn. Extension không bịa đáp án cá nhân, không vượt CAPTCHA/xác thực. Khi có lỗi, thiếu câu bắt buộc hoặc không xác nhận được kết quả gửi, extension dừng và **không tự thử gửi lại**. Sau chuyển sang tài liệu mới, extension chỉ tiếp tục khi câu hỏi và điều khiển đã tải; phần không có câu hỏi dừng để kiểm tra thủ công, không tự gửi chỉ vì nút Gửi xuất hiện.
 
 Tiến trình qua tải lại trang được giữ tạm trong `chrome.storage.session` (hết hạn 2 phút); không lưu câu hỏi/đáp án hoặc API Key vào checkpoint. Tự gửi chỉ bật cho lần chạy được xác nhận, không lưu làm mặc định.
 

@@ -32,6 +32,16 @@ test('scanner supports question containers with inner listitem wrappers and excl
   assert.equal(questions.length, 1);
   assert.equal(questions[0].question.choices.length, 2);
 });
+test('Forms section title listitems are not questions; unsupported questions remain detectable', () => {
+  const doc = fixture(radio('A'));
+  doc.querySelector('[role="list"]')!.insertAdjacentHTML('afterbegin', '<div role="listitem"><div role="heading" aria-level="2">PHẦN 1. HOẠT ĐỘNG VÀ NHU CẦU</div></div>');
+  assert.equal(scanForm(doc).length, 1);
+  assert.equal(scanForm(doc)[0].question.kind, 'radio');
+  doc.querySelector('[role="list"]')!.insertAdjacentHTML('beforeend', '<div role="listitem"><div><div role="heading" aria-level="3">Tải tệp *</div></div><input type="file" required/></div>');
+  assert.equal(scanForm(doc).length, 2);
+  assert.equal(scanForm(doc)[1].question.kind, 'unsupported');
+  assert.equal(scanForm(doc)[1].question.required, true);
+});
 test('scanner excludes disabled choices, keeps stable ids and current answers', () => {
   const doc = fixture(radio('Nam', 'aria-checked="true"') + radio('Nữ', 'aria-disabled="true"'));
   doc.querySelector('[role="radio"]')!.setAttribute('aria-checked', 'true');

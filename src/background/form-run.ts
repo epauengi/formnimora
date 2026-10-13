@@ -100,9 +100,11 @@ export async function handleRunMessage(message: unknown, sender: chrome.runtime.
           await remove(tab!);
           return { ok: true, data: { settings: checkpoint.settings, state: checkpoint.state } };
         }
-        case 'CLEAR_RUN':
-          await remove(tab!);
+        case 'CLEAR_RUN': {
+          const checkpoint = (await chrome.storage.session.get(key(tab!)))[key(tab!)];
+          if (checkpoint?.documentId === sender.documentId) await remove(tab!);
           return { ok: true, data: true };
+        }
         default: throw new Error('Unknown action.');
       }
     });
