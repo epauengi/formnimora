@@ -38,7 +38,7 @@ export function validateApi(settings: APISettings): string {
   return origin;
 }
 export function Header({ settings, children }: { settings?: boolean; children?: ReactNode }) {
-  return <header className="app-header"><div className="brand"><svg className="document-mark" width="34" height="40" viewBox="0 0 34 40" fill="none" aria-hidden="true"><path d="M5 1h16l12 12v23a3 3 0 0 1-3 3H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Z" fill="currentColor"/><path d="M21 1v12h12" fill="white" opacity=".3"/><path d="M9 21h16M9 27h16M9 33h10" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg><div><h1>Form Assist</h1><p>{settings ? 'Cài đặt tiện ích' : 'Điền biểu mẫu, có kiểm soát'}</p></div></div>{children}</header>;
+  return <header className="app-header"><div className="brand"><svg className="brand-mark" width="38" height="38" viewBox="0 0 256 256" fill="none" aria-hidden="true"><g fill="#2548D8"><rect x="44" y="45" width="24" height="24" rx="8"/><rect x="88" y="45" width="124" height="24" rx="12"/><rect x="44" y="101" width="24" height="24" rx="8"/><rect x="88" y="101" width="88" height="24" rx="12"/><rect x="44" y="157" width="24" height="24" rx="8"/></g><path d="M88 169h62l22-22h37" stroke="#2548D8" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/><circle cx="211" cy="147" r="10" fill="#FFAD42"/></svg><div><h1>FormNimora</h1><p>{settings ? 'Cài đặt tiện ích' : 'Điền biểu mẫu, có kiểm soát'}</p></div></div>{children}</header>;
 }
 export function Notice({ error, busy, message }: { error?: string; busy?: string; message?: string }) {
   return <div aria-live="polite" aria-atomic="true" className={error ? 'notice error' : busy || message ? 'notice' : 'live-empty'}>{error || busy || message || ''}</div>;
