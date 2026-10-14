@@ -75,7 +75,7 @@ h3 { font-size: 13px; font-weight: 650; }
 
 /* Buttons */
 button {
-  min-height: 42px;
+  min-height: 40px;
   padding: 8px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -171,7 +171,7 @@ button.danger:hover:not(:disabled) {
   justify-content: space-between;
   gap: 12px;
   background: var(--surface);
-  padding: 14px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -182,17 +182,20 @@ button.danger:hover:not(:disabled) {
 
 /* Shell & Layout */
 .popup-shell {
-  width: 420px;
-  max-width: 100vw;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  max-height: 600px;
 }
 .popup-content {
-  padding: 16px 20px;
+  flex: 1;
+  min-height: 0;
+  padding: 14px 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow-y: auto;
 }
 .section-heading {
@@ -249,8 +252,8 @@ button.danger:hover:not(:disabled) {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 12px;
-  padding: 8px;
+  margin-top: 8px;
+  padding: 6px;
   background: var(--line-subtle);
   border-radius: 10px;
   border: 1px solid var(--line);
@@ -259,7 +262,7 @@ button.danger:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   background: var(--surface);
   border-radius: 7px;
   border: 1px solid var(--line);
@@ -275,26 +278,26 @@ button.danger:hover:not(:disabled) {
   font-size: 11px;
   font-weight: 500;
   color: var(--muted);
-  white-space: nowrap;
+  line-height: 1.2;
 }
 
 /* Panels & Cards */
 .panel {
-  padding: 16px;
+  padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
 }
-.panel > h2 { margin-bottom: 14px; }
+.panel > h2 { margin-bottom: 10px; }
 .panel > .check-row:last-child { padding-bottom: 0; }
 
 /* Fields & Inputs */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 .field > span {
   font-size: 13px;
@@ -305,14 +308,14 @@ button.danger:hover:not(:disabled) {
   color: var(--muted);
   font-size: 12px;
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 input:not([type="checkbox"]), select, textarea {
   min-width: 0;
   width: 100%;
-  min-height: 42px;
-  padding: 9px 12px;
+  min-height: 38px;
+  padding: 7px 11px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -347,8 +350,8 @@ input[type="checkbox"] {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 6px 8px;
   border-radius: 8px;
   cursor: pointer;
   transition: background-color .15s ease-out;
@@ -357,7 +360,7 @@ input[type="checkbox"] {
   background: var(--soft);
 }
 .check-row > span { flex: 1; font-size: 13px; color: var(--text); }
-.check-row small { display: block; margin-top: 3px; }
+.check-row small { display: block; margin-top: 2px; }
 
 .toggle-group {
   margin-bottom: 16px;
@@ -417,8 +420,8 @@ fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea { 
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 20px;
+  gap: 6px;
+  padding: 10px 20px;
   background: var(--surface);
   border-top: 1px solid var(--line);
 }
@@ -454,7 +457,6 @@ fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea { 
   border-radius: 10px;
   background: var(--surface);
   margin-top: 12px;
-  overflow: hidden;
 }
 summary {
   min-height: 42px;
@@ -465,6 +467,7 @@ summary {
   font-size: 13px;
   user-select: none;
   background: var(--surface);
+  border-radius: 9px;
   transition: background-color .15s ease-out;
 }
 summary:hover {
@@ -473,6 +476,10 @@ summary:hover {
 }
 summary::marker { color: var(--accent); }
 
+.advanced-options[open] > summary,
+.details[open] > summary {
+  border-radius: 9px 9px 0 0;
+}
 .advanced-options[open] {
   padding-bottom: 14px;
 }

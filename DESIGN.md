@@ -77,7 +77,7 @@ Hệ phông chữ native Segoe UI / system sans đảm bảo tốc độ nạp 0
 
 ## Layout
 
-- **Popup (420px):** Phân 3 tầng:
+- **Side Panel & Popup (Responsive):** Phân 3 tầng, chiếm trọn chiều cao trình duyệt khi mở Side Panel:
   1. Header thương hiệu & trạng thái kết nối.
   2. Vùng cuộn nội dung: khối metrics, thẻ cấu hình chính, accordion tùy chọn tự động gửi thật.
   3. Thanh công cụ cố định (Bottom Bar): chứa nút quét, chuẩn bị, áp dụng hoặc dừng; kèm dòng thông tin an toàn.

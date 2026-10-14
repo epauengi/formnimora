@@ -104,3 +104,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 chrome.tabs.onRemoved.addListener(cancelTab);
+
+if (typeof chrome !== 'undefined' && chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+}

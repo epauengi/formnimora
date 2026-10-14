@@ -26,6 +26,8 @@ export function App() {
   const [quantity, setQuantity] = useState(1);
   const tabId = useRef<number | undefined>(undefined);
   const active = engine?.phase === 'planning' || engine?.phase === 'filling';
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const usesAI = settings.mode === 'ai' || settings.aiText;
 
   useEffect(() => {
@@ -50,7 +52,17 @@ export function App() {
       setBusy('');
     }
     void initialize();
-    return () => { disposed = true; };
+    const onTabActivated = () => { if (!activeRef.current) void initialize(); };
+    const onTabUpdated = (_id: number, change: chrome.tabs.TabChangeInfo) => {
+      if (change.status === 'complete' && !activeRef.current) void initialize();
+    };
+    chrome.tabs?.onActivated?.addListener?.(onTabActivated);
+    chrome.tabs?.onUpdated?.addListener?.(onTabUpdated);
+    return () => {
+      disposed = true;
+      chrome.tabs?.onActivated?.removeListener?.(onTabActivated);
+      chrome.tabs?.onUpdated?.removeListener?.(onTabUpdated);
+    };
   }, []);
 
   useEffect(() => {

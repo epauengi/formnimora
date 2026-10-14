@@ -52,7 +52,7 @@ with sync_playwright() as p:
     shot(page, 'mobile.png')
     page.locator('label.check-row').filter(has_text='Giao diện tối').click()
     shot(page, 'settings-dark-mobile.png')
-    page.set_viewport_size({'width':420,'height':600})
+    page.set_viewport_size({'width':600,'height':600})
     page.goto('http://127.0.0.1:5173/popup.html', wait_until='networkidle')
     shot(page, 'popup.png')
     assert not page.locator('.auto-fill-options').evaluate('(e)=>e.open')
