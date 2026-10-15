@@ -527,24 +527,24 @@ summary::marker { color: var(--accent); }
 .run-progress { display: block; width: 100%; height: 6px; margin: 8px 0; accent-color: var(--accent); }
 
 /* Settings View */
-.settings-shell { min-height: 100vh; padding: 0 40px; }
-.settings-inner { max-width: 1060px; margin-inline: auto; padding-bottom: 40px; }
-.settings-shell .app-header { background: transparent; padding: 20px 0; border-bottom: 0; }
+.settings-shell { min-height: 100vh; padding: 0 32px; }
+.settings-inner { max-width: 1180px; margin-inline: auto; padding-bottom: 32px; }
+.settings-shell .app-header { background: transparent; padding: 16px 0; border-bottom: 0; }
 .settings-intro {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 32px;
-  padding: 12px 0 24px;
+  gap: 24px;
+  padding: 8px 0 20px;
   border-bottom: 1px solid var(--line);
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 .settings-intro h2 { font-size: 26px; line-height: 1.2; letter-spacing: -0.03em; font-weight: 700; }
 .settings-intro p { max-width: 480px; color: var(--muted); font-size: 13px; line-height: 1.6; margin-top: 4px; }
 
 .settings-nav {
   display: inline-flex;
-  gap: 4px;
+  gap: 3px;
   padding: 3px;
   background: var(--line-subtle);
   border: 1px solid var(--line);
@@ -555,68 +555,77 @@ summary::marker { color: var(--accent); }
   display: inline-flex;
   align-items: center;
   min-height: 36px;
-  padding: 6px 14px;
+  padding: 6px 12px;
   background: transparent;
   border-radius: 6px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   transition: background-color .15s ease-out, color .15s ease-out;
 }
-.settings-nav a:hover {
+.settings-nav a:hover, .settings-nav a:focus-visible {
   background: var(--surface);
-  color: var(--title);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  color: var(--accent);
 }
 
-.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.settings-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 16px; align-items: start; }
 .settings-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 24px;
+  border-radius: 12px;
+  padding: 20px;
   min-width: 0;
-  scroll-margin-top: 24px;
+  scroll-margin-top: 20px;
 }
-.card-heading { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-.card-heading h2 { font-size: 18px; letter-spacing: -0.02em; }
-.card-heading p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.card-heading { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.card-heading h2 { font-size: 16px; letter-spacing: -0.02em; }
+.card-heading p { font-size: 12px; color: var(--muted); margin-top: 3px; }
 
 .field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.settings-section { margin-block: 20px; }
-.settings-section h3 { margin-bottom: 12px; color: var(--title); }
+.settings-section { margin-block: 16px; }
+.settings-section h3 { margin-bottom: 8px; color: var(--title); }
+.settings-section > .field:last-child { margin-bottom: 0; }
 
 .settings-actions {
-  padding-top: 18px;
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  padding: 12px;
+  margin: 18px -12px -12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
 }
-.settings-actions > .text-button { margin-top: 8px; }
+.settings-actions > .text-button { margin-top: 6px; }
 
 .rules-section .section-heading { align-items: flex-start; margin-bottom: 8px; }
 .rules-section .text-button { flex-shrink: 0; }
 .rule-row {
-  padding: 12px;
+  padding: 10px;
   background: var(--line-subtle);
   border: 1px solid var(--line);
   border-radius: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .rule-row .field { margin-bottom: 8px; }
 .empty-rule { padding-block: 8px; color: var(--muted); font-size: 12px; }
 
-.api-footnote { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-subtle); }
-.settings-footer { padding: 24px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
+.api-footnote { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-subtle); }
+.settings-footer { padding: 20px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 
 @media (max-width: 800px) {
   .settings-shell { padding-inline: 16px; }
   .settings-grid { grid-template-columns: 1fr; }
-  .settings-intro { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .settings-intro { flex-direction: column; align-items: flex-start; gap: 12px; }
   .settings-intro p { max-width: none; }
-  .settings-nav { width: 100%; display: flex; }
-  .settings-nav a { flex: 1; justify-content: center; }
-  .settings-card { padding: 20px; }
+  .settings-nav { width: 100%; display: flex; min-width: 0; }
+  .settings-nav a { flex: 1 1 0; min-width: 0; justify-content: center; text-align: center; padding-inline: 6px; white-space: normal; }
+  .settings-intro > div, .settings-grid, .settings-card, .settings-card fieldset { min-width: 0; }
+  .settings-card { padding: 18px; }
+  .field-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .settings-shell { overflow-x: clip; }
+  .settings-actions { position: static; margin: 16px 0 0; }
 }
 
 @media (max-width: 370px) {
