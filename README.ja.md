@@ -1,8 +1,24 @@
 [English](./README.md) | **日本語**
 
-# FormNimora
+<div align="center">
+  <img src="./public/icons/formnimora-app-icon.svg" alt="FormNimora ロゴ" width="72" height="72" />
+  <h1>FormNimora</h1>
+  <p>Google Forms に、ランダム・キーワードルール・AI で回答を入力する Chrome 拡張機能です。</p>
+  <p>
+    <a href="#ローカルでのインストール">インストール</a> ·
+    <a href="#使い方">使い方</a> ·
+    <a href="#ai-の設定任意">AI の設定</a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/version-1.1.0-2548D8?style=flat-square" alt="バージョン 1.1.0" />
+    <img src="https://img.shields.io/badge/Chrome-120%2B-334155?style=flat-square" alt="Chrome 120 以上が必要です" />
+    <img src="https://img.shields.io/badge/Manifest-V3-334155?style=flat-square" alt="Chrome Manifest V3" />
+  </p>
+</div>
 
-Google Forms に、ランダム・キーワードルール・AI で回答を入力する Chrome 拡張機能です。
+[![インストール済みの FormNimora で表示した設定画面と回答プレビュー](./docs/readme/overview.webp)](./docs/readme/overview.webp)
+
+<p align="center"><sub>設定と回答プレビュー · ローカルのテストフォームを使った実際の拡張機能の画面です · クリックで拡大</sub></p>
 
 ## 主な機能
 
@@ -34,7 +50,8 @@ npm run build
 3. **Chuẩn bị câu trả lời** で回答を準備し、プレビュー確認後に **Áp dụng vào biểu mẫu** で入力します。
 4. フォームを確認し、手動で送信します。通常の入力では**自動送信しません**。
 
-**自動送信では実際の回答が送信されます。** **Điền biểu mẫu** は、自分が所有するフォームか、テストの許可を得たフォームでのみ使用してください。停止しても送信済みの回答は取り消せません。停止・リセットでは入力済みの回答を消去しません。エラー時は処理を停止し、送信を自動で再試行しません。
+> [!WARNING]
+> **自動送信では実際の回答が送信されます。** **Điền biểu mẫu** は、自分が所有するフォームか、テストの許可を得たフォームでのみ使用してください。停止しても送信済みの回答は取り消せません。停止・リセットでは入力済みの回答を消去しません。エラー時は処理を停止し、送信を自動で再試行しません。
 
 ### AI の設定（任意）
 
@@ -42,7 +59,8 @@ npm run build
 
 AI を使うと、現在の質問、該当する選択肢、明示的に入力した個人情報・補足情報が設定先のプロバイダーに送られます。テキスト質問への AI 回答は初期状態では無効です。生成内容を確認してください。API の利用には料金が発生する場合があります。
 
-**API キーは `chrome.storage.local` に保存され、初期状態では暗号化されません。** Content script はこのストレージを読み取れず、API 通信はバックグラウンドの service worker が行います。共有端末では権限の強いキーを使わないでください。キーを削除しても API ホストへのアクセス許可は解除されないため、Chrome で管理してください。
+> [!IMPORTANT]
+> **API キーは `chrome.storage.local` に保存され、初期状態では暗号化されません。** Content script はこのストレージを読み取れず、API 通信はバックグラウンドの service worker が行います。共有端末では権限の強いキーを使わないでください。キーを削除しても API ホストへのアクセス許可は解除されないため、Chrome で管理してください。
 
 ## 既知の制約
 

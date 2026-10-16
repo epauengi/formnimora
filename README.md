@@ -1,8 +1,24 @@
 **English** | [日本語](./README.ja.md)
 
-# FormNimora
+<div align="center">
+  <img src="./public/icons/formnimora-app-icon.svg" alt="FormNimora logo" width="72" height="72" />
+  <h1>FormNimora</h1>
+  <p>A Chrome extension for filling Google Forms with random answers, keyword rules, or AI.</p>
+  <p>
+    <a href="#install-locally">Install locally</a> ·
+    <a href="#usage">Usage</a> ·
+    <a href="#optional-ai-setup">AI setup</a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/version-1.1.0-2548D8?style=flat-square" alt="Version 1.1.0" />
+    <img src="https://img.shields.io/badge/Chrome-120%2B-334155?style=flat-square" alt="Requires Chrome 120 or later" />
+    <img src="https://img.shields.io/badge/Manifest-V3-334155?style=flat-square" alt="Chrome Manifest V3" />
+  </p>
+</div>
 
-A Chrome extension for filling Google Forms with random answers, keyword rules, or AI.
+[![FormNimora settings and editable answer preview, captured from the installed extension](./docs/readme/overview.webp)](./docs/readme/overview.webp)
+
+<p align="center"><sub>Settings & answer preview · Actual extension UI, using a local test form · Click to enlarge</sub></p>
 
 ## Features
 
@@ -34,7 +50,8 @@ After code changes, rebuild, reload the extension, and refresh the form tab.
 3. Select **Chuẩn bị câu trả lời**, review the preview, then **Áp dụng vào biểu mẫu**.
 4. Review the form and submit manually. Normal filling does **not** submit.
 
-**Automatic submission sends real responses.** Use **Điền biểu mẫu** only on forms you own or are authorized to test. Stop cannot undo submitted responses. Stop and reset preserve answers already entered; errors stop the run rather than automatically retrying submission.
+> [!WARNING]
+> **Automatic submission sends real responses.** Use **Điền biểu mẫu** only on forms you own or are authorized to test. Stop cannot undo submitted responses. Stop and reset preserve answers already entered; errors stop the run rather than automatically retrying submission.
 
 ### Optional AI setup
 
@@ -42,7 +59,8 @@ Open **Cài đặt**, enter your provider's Base URL, API key, and model, then s
 
 AI sends the current question, its choices where applicable, and any personal context you explicitly provide to the configured provider. AI text answers are off by default. Review generated answers; API usage may incur charges.
 
-**API keys are stored locally in `chrome.storage.local`, without encryption by default.** Content scripts cannot read this storage; API requests run in the background service worker. Avoid privileged keys on shared devices. Deleting a key does not revoke API-host permissions; manage those in Chrome.
+> [!IMPORTANT]
+> **API keys are stored locally in `chrome.storage.local`, without encryption by default.** Content scripts cannot read this storage; API requests run in the background service worker. Avoid privileged keys on shared devices. Deleting a key does not revoke API-host permissions; manage those in Chrome.
 
 ## Limitations
 
