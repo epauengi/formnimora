@@ -1,4 +1,4 @@
-import type { APISettings, Choice, FillSettings, Question, QuestionKind } from '../types';
+import type { APISettings, Choice, FillSettings, FixedAnswer, Question, QuestionKind } from '../types';
 
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid payload.');
@@ -52,6 +52,34 @@ export function validateAPI(value: unknown): APISettings {
   };
 }
 
+export function validateFixedAnswers(value: unknown): FixedAnswer[] {
+  if (!Array.isArray(value) || value.length > 100 || JSON.stringify(value).length > 50000) throw new Error('Invalid fixed answers.');
+  const ids = (value: unknown): string[] => {
+    if (!Array.isArray(value) || !value.length || value.length > 100) throw new Error('Invalid fixed choices.');
+    const result = value.map(id => text(id, 128, 1));
+    if (new Set(result).size !== result.length) throw new Error('Duplicate fixed choices.');
+    return result;
+  };
+  const result = value.map(value => {
+    const v = object(value);
+    const answer: FixedAnswer = { questionId: text(v.questionId, 128, 1), page: number(v.page, 1, 20, true) };
+    if ((v.choices === undefined) === (v.rows === undefined)) throw new Error('Invalid fixed answer structure.');
+    if (v.choices !== undefined) answer.choices = ids(v.choices);
+    if (v.rows !== undefined) {
+      const rows = Object.entries(object(v.rows));
+      if (!rows.length || rows.length > 50) throw new Error('Invalid fixed rows.');
+      answer.rows = Object.fromEntries(rows.map(([id, choices]) => {
+        text(id, 128, 1);
+        if (['__proto__', 'prototype', 'constructor'].includes(id)) throw new Error('Invalid row ID.');
+        return [id, ids(choices)];
+      }));
+    }
+    return answer;
+  });
+  if (new Set(result.map(answer => `${answer.page}:${answer.questionId}`)).size !== result.length) throw new Error('Duplicate fixed questions.');
+  return result;
+}
+
 export function validateFill(value: unknown): FillSettings {
   const v = object(value);
   if (!Array.isArray(v.rules) || v.rules.length > 100) throw new Error('Too many rules.');
@@ -67,6 +95,7 @@ export function validateFill(value: unknown): FillSettings {
     autoNext: boolean(v.autoNext), autoSubmit: boolean(v.autoSubmit ?? false), skipAnswered: boolean(v.skipAnswered), preview: boolean(v.preview), rules,
     personalContext: text(v.personalContext, 6000), answerLength: oneOf(v.answerLength, ['short', 'medium', 'long']),
     language: oneOf(v.language, ['auto', 'vi', 'en']), dark: boolean(v.dark),
+    ...(v.fixedAnswers !== undefined ? { fixedAnswers: validateFixedAnswers(v.fixedAnswers) } : {}),
   };
 }
 

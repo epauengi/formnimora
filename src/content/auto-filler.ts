@@ -195,7 +195,7 @@ export class AutoFillEngine {
             }
             const question = this.state.questions.find(question => question.id === item.question.id) || item.question;
             try {
-              const answer = await planAnswer(question, this.settings, signal);
+              const answer = await planAnswer(question, this.settings, signal, this.state.page);
               if (answer) this.state.answers.push(answer);
             } catch (error) {
               signal.throwIfAborted();
@@ -218,7 +218,8 @@ export class AutoFillEngine {
               try {
                 const item = scanForm().find(item => item.question.id === answer.questionId);
                 if (!item) throw new Error('Câu hỏi đã biến mất khỏi DOM.');
-                if (attempt === 0 && this.settings.skipAnswered && item.question.answered) break;
+                const fixed = this.settings.fixedAnswers?.some(fixed => fixed.questionId === answer.questionId && fixed.page === this.state.page);
+                if (attempt === 0 && this.settings.skipAnswered && item.question.answered && !fixed) break;
                 validateAnswer(item.question, answer);
                 await this.fill(item, answer, signal); break;
               } catch (error) {

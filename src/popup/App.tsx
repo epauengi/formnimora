@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_FILL, type Answer, type ContentCommand, type EngineState, type FillSettings, type Question, type QuestionKind } from '../types';
+import { DEFAULT_FILL, type Answer, type ContentCommand, type EngineState, type FillSettings, type FixedAnswer, type Question, type QuestionKind } from '../types';
 import { AIWarning, Header, Notice, browserNotice, errorText, extensionAvailable, isFormUrl, runtime, unwrap } from '../ui/shared';
 
 const kinds: Record<QuestionKind, string> = { radio: 'Một lựa chọn', checkbox: 'Nhiều lựa chọn', dropdown: 'Danh sách thả xuống', scale: 'Thang điểm', 'radio-grid': 'Lưới một lựa chọn', 'checkbox-grid': 'Lưới nhiều lựa chọn', text: 'Trả lời ngắn', paragraph: 'Đoạn văn', unsupported: 'Chưa hỗ trợ' };
@@ -15,6 +15,18 @@ function AnswerEditor({ question, answer, onChange }: { question: Question; answ
   </article>;
 }
 
+function FixedAnswerEditor({ question, index, answer, onChange }: { question: Question; index: number; answer?: FixedAnswer; onChange: (selection: Pick<FixedAnswer, 'choices' | 'rows'> | undefined) => void }) {
+  const control = (choices: Question['choices'], selected: string[], id: string, label: string, change: (ids: string[]) => void) => {
+    const multiple = question.kind === 'checkbox' || question.kind === 'checkbox-grid';
+    return <label className="field" htmlFor={id}><span id={`${id}-label`}>{label}</span><select id={id} aria-labelledby={`fixed-title-${question.id} ${id}-label`} multiple={multiple} size={multiple ? Math.min(5, choices.length + 1) : undefined} value={multiple ? selected.length ? selected : [''] : selected[0] || ''} onChange={event => change(Array.from(event.currentTarget.selectedOptions, option => option.value).filter(Boolean))}><option value="">Ngẫu nhiên</option>{choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</select>{multiple && <small>Giữ Ctrl / ⌘ để chọn nhiều đáp án. Bỏ chọn để trở về ngẫu nhiên.</small>}</label>;
+  };
+  return <article className="question"><h3 id={`fixed-title-${question.id}`}>Câu {index + 1}. {question.title}</h3>{question.rows.length ? question.rows.map(row => <div key={row.id}>{control(row.choices, answer?.rows?.[row.id] || [], `fixed-${question.id}-${row.id}`, row.label, ids => {
+    const rows = { ...answer?.rows };
+    if (ids.length) rows[row.id] = ids; else delete rows[row.id];
+    onChange(Object.keys(rows).length ? { rows } : undefined);
+  })}</div>) : control(question.choices, answer?.choices || [], `fixed-${question.id}`, 'Đáp án cho mọi phản hồi', choices => onChange(choices.length ? { choices } : undefined))}</article>;
+}
+
 export function App() {
   const [settings, setSettings] = useState<FillSettings>({ ...DEFAULT_FILL });
   const [engine, setEngine] = useState<EngineState | null>(null);
@@ -24,6 +36,8 @@ export function App() {
   const [error, setError] = useState('');
   const [consent, setConsent] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  // ponytail: configure scanned pages for this run only; saved per-form presets need form-scoped storage.
+  const [fixedAnswers, setFixedAnswers] = useState<FixedAnswer[]>([]);
   const tabId = useRef<number | undefined>(undefined);
   const active = engine?.phase === 'planning' || engine?.phase === 'filling';
   const activeRef = useRef(active);
@@ -33,11 +47,17 @@ export function App() {
   useEffect(() => {
     if (!extensionAvailable) return;
     let disposed = false;
+    let formIdentity = '';
     async function initialize() {
       const fillPromise = runtime<FillSettings>({ type: 'GET_FILL' });
       const formPromise = (async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id === undefined || !isFormUrl(tab.url)) throw new Error('Mở trang Google Forms có đường dẫn /viewform rồi mở lại tiện ích.');
+        const identity = new URL(tab.url!).pathname.replace(/^\/forms\/(?:u\/\d+\/)?/, '/forms/').replace(/(?:viewform|formResponse)\/?$/, '');
+        if (formIdentity !== identity || tabId.current !== tab.id) {
+          formIdentity = identity;
+          if (!disposed) setFixedAnswers([]);
+        }
         tabId.current = tab.id;
         await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
         return unwrap<EngineState>(await chrome.tabs.sendMessage(tab.id, { type: 'STATUS' } satisfies ContentCommand));
@@ -102,13 +122,19 @@ export function App() {
     finally { setBusy(''); }
   }
   function editAnswer(next: Answer) { const edited = { ...next, error: undefined }; setAnswers(previous => previous.map(answer => answer.questionId === edited.questionId ? edited : answer)); }
+  function fixAnswer(questionId: string, selection: Pick<FixedAnswer, 'choices' | 'rows'> | undefined) {
+    const page = engine?.page || 1;
+    setFixedAnswers(previous => [...previous.filter(answer => answer.questionId !== questionId || answer.page !== page), ...(selection ? [{ questionId, page, ...selection }] : [])]);
+  }
 
   return <main className={`popup-shell ${settings.dark ? 'theme-dark' : ''}`}><Header><button className="icon-button" aria-label="Mở cài đặt" title="Mở cài đặt" onClick={() => { if (extensionAvailable) void chrome.runtime.openOptionsPage().catch(failure => setError(errorText(failure))); else setError(browserNotice); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg></button></Header>
     <div className="popup-content"><section className="form-status"><div className="section-heading"><h2>Biểu mẫu hiện tại</h2><span className={`status-pill ${active ? 'working' : ''}`}>{engine ? phases[engine.phase] : 'Chưa kết nối'}</span></div>{engine ? <><p className="muted">{engine.questions.length} câu hỏi · {engine.questions.filter(question => !['text', 'paragraph', 'unsupported'].includes(question.kind)).length} trắc nghiệm · {engine.questions.filter(question => ['text', 'paragraph'].includes(question.kind)).length} tự luận · Trang {engine.page}</p>{engine.target! > 1 && <><p className="muted">Đã gửi {engine.submitted || 0}/{engine.target} phản hồi</p><progress className="run-progress" max={engine.target} value={engine.submitted || 0}/></>}<div className="metrics"><div><strong>{engine.completed}</strong><span>Đã điền</span></div><div><strong>{engine.failed}</strong><span>Không thành công</span></div><div><strong>{engine.questions.filter(question => question.answered).length}</strong><span>Đã có trả lời</span></div></div></> : <p className="muted">Mở Google Forms để quét câu hỏi và chuẩn bị câu trả lời. Chế độ thường không gửi; nút Điền biểu mẫu có thể tự gửi sau xác nhận.</p>}</section>
     {engine?.phase !== 'preview' ? <><section className="panel"><h2>Cách điền</h2><label className="field" htmlFor="popup-mode"><span>Chế độ</span><select id="popup-mode" value={settings.mode} disabled={!!busy || active} onChange={event => { setSettings(previous => ({ ...previous, mode: event.target.value as FillSettings['mode'] })); setConsent(false); }}><option value="random">Ngẫu nhiên</option><option value="rules">Theo quy tắc</option><option value="ai">AI · cần API và đồng ý gửi dữ liệu</option></select></label><label className="check-row"><input type="checkbox" checked={settings.preview} disabled={!!busy || active} onChange={event => setSettings(previous => ({ ...previous, preview: event.target.checked }))}/><span>Xem và sửa câu trả lời trước khi điền<small>{settings.preview ? 'Chưa ghi vào biểu mẫu khi chuẩn bị.' : 'Câu trả lời sẽ được điền trực tiếp.'}</small></span></label>{usesAI && <><AIWarning/><label className="check-row"><input type="checkbox" checked={consent} disabled={active} onChange={event => setConsent(event.target.checked)}/><span>Tôi đồng ý gửi dữ liệu trên tới nhà cung cấp API.{settings.mode !== 'ai' && settings.aiText && <small>Đang bật AI cho câu hỏi văn bản từ Cài đặt.</small>}</span></label></>}</section>
-    <details className="auto-fill-options advanced-options"><summary>Điền & gửi tự động <span className="status-pill caution">Gửi thật</span></summary><p className="muted">Chọn ngẫu nhiên, tự bấm Tiếp, gửi đủ số phản hồi. Câu văn bản cần AI hoặc đã có đáp án; gặp lỗi sẽ dừng.</p><label className="field" htmlFor="response-quantity"><span>Số lượng phản hồi</span><input id="response-quantity" type="number" min="1" max="100" step="1" value={quantity} disabled={!!busy || active} onChange={event => setQuantity(event.target.valueAsNumber)}/><small>1–100. Mỗi phản hồi sẽ được gửi thật.</small></label><button className="primary full-width" disabled={!ready || !!busy || active || (settings.aiText && !consent) || !Number.isInteger(quantity) || quantity < 1 || quantity > 100} onClick={() => {
+    <details className="auto-fill-options advanced-options"><summary>Điền & gửi tự động <span className="status-pill caution">Gửi thật</span></summary><p className="muted">Giữ đáp án cố định cho câu đã chọn, ngẫu nhiên các câu còn lại; tự bấm Tiếp và gửi đủ số phản hồi. Câu văn bản cần AI hoặc đã có đáp án; gặp lỗi sẽ dừng.</p><label className="field" htmlFor="response-quantity"><span>Số lượng phản hồi</span><input id="response-quantity" type="number" min="1" max="100" step="1" value={quantity} disabled={!!busy || active} onChange={event => setQuantity(event.target.valueAsNumber)}/><small>1–100. Mỗi phản hồi sẽ được gửi thật.</small></label>
+      <details className="fixed-answer-options"><summary>Đáp án cố định ({fixedAnswers.length})</summary><p className="muted">Chọn đáp án dùng cho mọi lượt trong đợt chạy này, kể cả sau reload. Câu hoặc hàng để Ngẫu nhiên vẫn chọn như bình thường. Chỉ hiện câu trắc nghiệm trên trang hiện tại; bấm Quét câu hỏi nếu danh sách trống.</p><fieldset aria-label="Đáp án cố định cho các câu đã quét" disabled={!ready || !!busy || active}><button type="button" onClick={() => void command({ type: 'SCAN' })}>Quét câu hỏi trên trang</button>{engine?.questions.map((question, index) => !['text', 'paragraph', 'unsupported'].includes(question.kind) && (question.choices.length > 0 || question.rows.length > 0) ? <FixedAnswerEditor key={question.id} question={question} index={index} answer={fixedAnswers.find(answer => answer.questionId === question.id && answer.page === engine.page)} onChange={selection => fixAnswer(question.id, selection)}/> : null)}{!engine?.questions.length && <p className="muted">Chưa có câu hỏi. Bấm Quét câu hỏi để chọn đáp án cố định.</p>}<button type="button" disabled={!fixedAnswers.length} onClick={() => setFixedAnswers([])}>Bỏ tất cả đáp án cố định</button></fieldset></details>
+      <button className="primary full-width" disabled={!ready || !!busy || active || (settings.aiText && !consent) || !Number.isInteger(quantity) || quantity < 1 || quantity > 100} onClick={() => {
       if (window.confirm(`Tự điền biểu mẫu và GỬI ${quantity} phản hồi thật? Chỉ dùng với biểu mẫu bạn sở hữu hoặc được phép gửi dữ liệu thử. Đã gửi thì không thể thu hồi.`)) {
-        void command({ type: 'START', settings: { ...settings, mode: 'random', preview: false, autoNext: true, autoSubmit: true }, quantity });
+        void command({ type: 'START', settings: { ...settings, mode: 'random', preview: false, autoNext: true, autoSubmit: true, fixedAnswers }, quantity });
       }
     }}>Điền biểu mẫu</button></details></> : <section className="preview-section"><div className="section-heading"><h2>Xem trước câu trả lời</h2><span className="muted">{answers.length} câu trả lời</span></div><p className="muted">Kiểm tra nội dung trước khi áp dụng. Bản xem trước được giữ khi đóng tiện ích.</p>{engine.questions.map(question => { const answer = answers.find(item => item.questionId === question.id); return answer ? <AnswerEditor key={question.id} question={question} answer={answer} onChange={editAnswer}/> : <article className="question" key={question.id}><h3>{question.title || 'Không có tiêu đề'}</h3><span className="kind">{kinds[question.kind]}</span><p className="muted">Không có câu trả lời được tạo{question.answered ? ' · Đã có trả lời trên biểu mẫu' : ''}.</p></article>; })}</section>}
     <Notice error={error || (engine?.phase === 'error' ? engine.logs.at(-1) || 'Tác vụ thất bại. Kiểm tra nhật ký.' : '')} busy={busy || (active && engine ? `${phases[engine.phase]}… Có thể dừng bất cứ lúc nào.` : '')} message={!extensionAvailable ? browserNotice : undefined}/>
