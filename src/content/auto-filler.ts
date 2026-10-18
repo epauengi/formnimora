@@ -27,7 +27,6 @@ export function formatFormConfirmUrl(baseFormUrl: string, currentUrlStr?: string
 
 export function isConfirmationPage(): boolean {
   if (scanForm().length > 0) return false;
-  if (typeof location !== 'undefined' && /\/formResponse\/?$/i.test(location.pathname)) return true;
   const text = (typeof document !== 'undefined' ? (document.body?.innerText || document.body?.textContent || '') : '').normalize('NFC').toLowerCase();
   const accepted = /câu trả lời của bạn đã được ghi|your response has been recorded|phản hồi của bạn đã được ghi|gửi ý kiến phản hồi khác|submit another response/i;
   return accepted.test(text);
@@ -56,6 +55,23 @@ export class AutoFillEngine {
     void this.handleResume(this.controller);
   }
   private async handleResume(controller: AbortController) {
+    try {
+      await this.continueResume(controller);
+    } catch (error) {
+      this.state.phase = controller.signal.aborted ? 'stopped' : 'error';
+      this.log(controller.signal.aborted ? 'Đã dừng. Giữ nguyên câu trả lời.' : error instanceof Error ? error.message : 'Không thể tiếp tục tác vụ.');
+      await this.clearRun().catch(() => {});
+    } finally {
+      if (this.controller === controller) this.controller = undefined;
+    }
+  }
+  private async continueResume(controller: AbortController) {
+    const signal = controller.signal;
+    for (let attempt = 0; attempt < 150; attempt++) {
+      signal.throwIfAborted();
+      if (isConfirmationPage() || scanForm().length > 0) break;
+      await sleep(100, signal);
+    }
     if (isConfirmationPage()) {
       const current = this.state.submitted || 0;
       const target = this.state.target || 1;
@@ -75,19 +91,24 @@ export class AutoFillEngine {
         questions: [],
         answers: [],
       };
-      await chrome.runtime.sendMessage({
+      const saved = await chrome.runtime.sendMessage({
         type: 'SAVE_RUN',
         settings: this.settings,
         state: progress,
         formUrl: this.formUrl,
-        resumeAfterConfirm: true,
-      });
+        resumeAfterConfirm: false,
+      }) as Result<boolean>;
+      if (!saved?.ok) throw new Error('Không lưu được tiến trình cho phản hồi tiếp theo. Đã dừng.');
+      controller.signal.throwIfAborted();
       const nextUrl = formatFormConfirmUrl(this.formUrl, this.currentUrl());
       this.navigate(nextUrl);
       return;
     }
+    if (this.resumeAfterConfirm && (this.state.submitted || 0) >= (this.state.target || 1)) {
+      throw new Error('Chưa xác nhận phản hồi cuối. Đã dừng để tránh gửi vượt số lượng.');
+    }
     this.state.phase = 'planning';
-    void this.run(controller, false, true);
+    await this.run(controller, false, true);
   }
   status(): EngineState { return structuredClone(this.state); }
   scanOnly(): EngineState {
@@ -277,7 +298,7 @@ export class AutoFillEngine {
         this.assertSafeToAdvance();
         const before = pageSignature();
         const previousHeadings = scanForm().map(item => item.root.querySelector('[role="heading"]')!);
-        const checkpoint = await chrome.runtime.sendMessage({ type: 'SAVE_RUN', settings: this.settings, state: { ...this.state, page: this.state.page + 1 } }) as Result<boolean>;
+        const checkpoint = await chrome.runtime.sendMessage({ type: 'SAVE_RUN', settings: this.settings, state: { ...this.state, page: this.state.page + 1 }, formUrl: this.formUrl }) as Result<boolean>;
         if (!checkpoint?.ok) throw new Error('Không lưu được tiến trình chuyển phần. Đã dừng.');
         signal.throwIfAborted();
         navigationPending = true;

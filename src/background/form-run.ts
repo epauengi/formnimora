@@ -69,7 +69,14 @@ async function read(tab: number, form: string | undefined): Promise<Checkpoint |
     if (!form || checkpoint.form !== form || typeof checkpoint.documentId !== 'string' || !checkpoint.documentId ||
         typeof checkpoint.savedAt !== 'number' || !Number.isSafeInteger(checkpoint.savedAt) ||
         checkpoint.savedAt > Date.now() || Date.now() - checkpoint.savedAt >= TTL) throw new Error('Invalid run checkpoint.');
-    return { form, documentId: checkpoint.documentId, savedAt: checkpoint.savedAt, settings: settings(checkpoint.settings), state: normalizeRunState(checkpoint.state) };
+    if (checkpoint.resumeAfterConfirm !== undefined && typeof checkpoint.resumeAfterConfirm !== 'boolean') throw new Error('Invalid run checkpoint.');
+    if (checkpoint.formUrl !== undefined && (typeof checkpoint.formUrl !== 'string' || formIdentity(checkpoint.formUrl) !== form)) throw new Error('Invalid run checkpoint.');
+    return {
+      form, documentId: checkpoint.documentId, savedAt: checkpoint.savedAt,
+      resumeAfterConfirm: checkpoint.resumeAfterConfirm === true,
+      formUrl: checkpoint.formUrl as string | undefined,
+      settings: settings(checkpoint.settings), state: normalizeRunState(checkpoint.state),
+    };
   } catch {
     await remove(tab);
     return null;
@@ -80,7 +87,7 @@ export function isRunAction(value: unknown): boolean {
   return value === 'SAVE_RUN' || value === 'RESUME_RUN' || value === 'CLEAR_RUN';
 }
 
-export async function handleRunMessage(message: unknown, sender: chrome.runtime.MessageSender): Promise<Result<boolean | { settings: FillSettings; state: EngineState } | null>> {
+export async function handleRunMessage(message: unknown, sender: chrome.runtime.MessageSender): Promise<Result<boolean | Pick<Checkpoint, 'settings' | 'state' | 'resumeAfterConfirm' | 'formUrl'> | null>> {
   try {
     const data = object(message);
     const tab = sender.tab?.id;
@@ -96,7 +103,7 @@ export async function handleRunMessage(message: unknown, sender: chrome.runtime.
       switch (data.type) {
         case 'SAVE_RUN': {
           if (data.resumeAfterConfirm !== undefined && typeof data.resumeAfterConfirm !== 'boolean') throw new Error('Invalid run checkpoint.');
-          if (data.formUrl !== undefined && (typeof data.formUrl !== 'string' || !data.formUrl.startsWith('https://docs.google.com/forms/'))) throw new Error('Invalid run checkpoint.');
+          if (data.formUrl !== undefined && (typeof data.formUrl !== 'string' || formIdentity(data.formUrl) !== form)) throw new Error('Invalid run checkpoint.');
           const checkpoint: Checkpoint = {
             form,
             documentId: sender.documentId!,
