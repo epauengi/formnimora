@@ -19,8 +19,8 @@ function choices(elements: Element[]): { choices: Choice[]; controls: Map<string
 export function scanForm(doc: Document = document): DOMQuestion[] {
   const roots = [...doc.querySelectorAll<HTMLElement>('[role="listitem"]')].filter(root =>
     visible(root) && root.querySelector('[role="heading"]') && !root.parentElement?.closest('[role="listitem"]') &&
-    // Forms section titles are direct level-2 headings, not answerable questions.
-    !root.querySelector(':scope > [role="heading"][aria-level="2"]'));
+    // Section headings may be wrapped; they have no answer controls to await on resume.
+    root.querySelector('[role="heading"]')?.getAttribute('aria-level') !== '2');
   return roots.map((root, index) => {
     const heading = root.querySelector('[role="heading"]');
     const title = (heading?.textContent || '').trim().replace(/\s*\*\s*$/, '');
