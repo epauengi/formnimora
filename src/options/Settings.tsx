@@ -18,6 +18,14 @@ export function Settings() {
   const usesAI = fill.mode === 'ai' || fill.aiText;
   const changeFill = <K extends keyof FillSettings>(key: K, value: FillSettings[K]) => { setFill(previous => ({ ...previous, [key]: value })); if (key === 'mode' || key === 'aiText') setAiConsent(false); };
   const changeApi = <K extends keyof APISettings>(key: K, value: APISettings[K]) => setApi(previous => ({ ...previous, [key]: value }));
+  function changeProvider(provider: APISettings['provider']) {
+    setShowKey(false);
+    setApi(previous => previous.provider === provider ? previous : {
+      ...previous, provider,
+      ...(provider === 'google' ? { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.8-flash', apiKey: '' }
+        : provider === 'openai' ? { baseUrl: DEFAULT_API.baseUrl, model: DEFAULT_API.model, apiKey: '' } : {}),
+    });
+  }
 
   useEffect(() => {
     if (!extensionAvailable) return;
@@ -118,15 +126,15 @@ export function Settings() {
         </fieldset>
       </form>
       <form id="api-settings" className="settings-card api-card" aria-labelledby="api-settings-title" onInvalidCapture={event => { const details = (event.target as HTMLElement).closest('details'); if (details) details.open = true; }} onSubmit={event => { event.preventDefault(); saveApi(false); }}>
-        <div className="card-heading"><h2 id="api-settings-title">Nhà cung cấp & bảo mật</h2><p>Dùng API tương thích OpenAI.</p></div>
+        <div className="card-heading"><h2 id="api-settings-title">Nhà cung cấp & bảo mật</h2><p>OpenAI, Google Gemini hoặc API tương thích OpenAI.</p></div>
         <fieldset disabled={!!busy || !extensionAvailable || !loadedApi}>
           <section className="settings-section" aria-labelledby="connection-settings-title">
             <h3 id="connection-settings-title">Kết nối API</h3>
-            <Field id="provider" label="Nhà cung cấp"><select id="provider" value={api.provider} onChange={event => changeApi('provider', event.target.value as APISettings['provider'])}><option value="openai">OpenAI</option><option value="custom">API tùy chỉnh (tương thích OpenAI)</option></select></Field>
-            <Field id="base-url" label="URL API" hint="HTTPS, ví dụ https://api.openai.com/v1. HTTP chỉ được dùng với localhost."><input id="base-url" type="url" required value={api.baseUrl} onChange={event => changeApi('baseUrl', event.target.value)} spellCheck={false}/></Field>
+            <Field id="provider" label="Nhà cung cấp" hint="Chọn Google hoặc OpenAI sẽ đặt URL, mô hình mặc định và xóa khóa đang nhập; nhập khóa của nhà cung cấp mới."><select id="provider" value={api.provider} onChange={event => changeProvider(event.target.value as APISettings['provider'])}><option value="openai">OpenAI</option><option value="google">Google (Gemini)</option><option value="custom">API tùy chỉnh (tương thích OpenAI)</option></select></Field>
+            <Field id="base-url" label="URL API" hint={api.provider === 'google' ? 'Endpoint tương thích OpenAI chính thức của Gemini. Dùng khóa từ Google AI Studio.' : 'HTTPS, ví dụ https://api.openai.com/v1. HTTP chỉ được dùng với localhost.'}><input id="base-url" type="url" required value={api.baseUrl} onChange={event => changeApi('baseUrl', event.target.value)} spellCheck={false}/></Field>
             <Field id="api-key" label="Khóa API"><input id="api-key" type={showKey ? 'text' : 'password'} autoComplete="off" value={api.apiKey} onChange={event => changeApi('apiKey', event.target.value)} spellCheck={false}/></Field><Toggle label="Hiện khóa API" checked={showKey} onChange={setShowKey}/>
             <p className="privacy-note">Khóa được lưu cục bộ trong Chrome, không được mã hóa. Khóa không bao giờ được gửi tới trang biểu mẫu. Chỉ cấp quyền cho đúng máy chủ API khi bạn nhấn Lưu hoặc Kiểm tra.</p>
-            <Field id="model" label="Mô hình"><input id="model" required value={api.model} onChange={event => changeApi('model', event.target.value)} placeholder="gpt-4o-mini" spellCheck={false}/></Field>
+            <Field id="model" label="Mô hình"><input id="model" required value={api.model} onChange={event => changeApi('model', event.target.value)} placeholder={api.provider === 'google' ? 'gemini-3.8-flash' : 'gpt-4o-mini'} spellCheck={false}/></Field>
           </section>
           <details className="advanced-options"><summary>Tùy chọn AI nâng cao</summary>
             <div className="field-pair"><Field id="temperature" label="Temperature" hint="0–2 · thấp hơn, ổn định hơn"><input id="temperature" type="number" min="0" max="2" step="0.1" required value={api.temperature} onChange={event => changeApi('temperature', event.target.valueAsNumber)}/></Field><Field id="max-tokens" label="Max tokens" hint="1–4096"><input id="max-tokens" type="number" min="1" max="4096" step="1" required value={api.maxTokens} onChange={event => changeApi('maxTokens', event.target.valueAsNumber)}/></Field></div>

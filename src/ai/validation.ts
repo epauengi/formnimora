@@ -45,7 +45,7 @@ export function validateAPI(value: unknown): APISettings {
   const model = text(v.model, 200, 1).trim();
   if (!model || /[\x00-\x1f]/.test(model)) throw new Error('Invalid model.');
   return {
-    provider: oneOf(v.provider, ['openai', 'custom']), baseUrl, apiKey, model,
+    provider: oneOf(v.provider, ['openai', 'google', 'custom']), baseUrl, apiKey, model,
     temperature: number(v.temperature, 0, 2), maxTokens: number(v.maxTokens, 1, 4096, true),
     systemPrompt: text(v.systemPrompt, 8000), timeout: number(v.timeout, 1000, 25000, true),
     retryCount: number(v.retryCount, 0, 3, true),

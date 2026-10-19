@@ -21,7 +21,7 @@ export interface FillSettings {
   personalContext: string; answerLength: 'short' | 'medium' | 'long'; language: 'auto' | 'vi' | 'en'; dark: boolean;
 }
 export interface APISettings {
-  provider: 'openai' | 'custom'; baseUrl: string; apiKey: string; model: string;
+  provider: 'openai' | 'google' | 'custom'; baseUrl: string; apiKey: string; model: string;
   temperature: number; maxTokens: number; systemPrompt: string; timeout: number; retryCount: number;
 }
 export interface EngineState {
