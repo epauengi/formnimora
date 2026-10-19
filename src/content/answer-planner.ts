@@ -65,7 +65,8 @@ export async function planAnswer(question: Question, settings: FillSettings, sig
   const fixedText = settings.fixedTextAnswers?.find(answer => answer.questionId === question.id && answer.page === page);
   if (fixedText) {
     if (!['text', 'paragraph'].includes(question.kind)) throw new Error('Đáp án văn bản không khớp câu hỏi.');
-    const answer = { questionId: question.id, text: fixedText.text };
+    const options = question.kind === 'text' ? fixedText.text.split(/\r\n?|\n/).map(line => line.trim()).filter(Boolean) : [fixedText.text];
+    const answer = { questionId: question.id, text: options[Math.floor(Math.random() * options.length)] };
     validateAnswer(question, answer);
     return answer;
   }

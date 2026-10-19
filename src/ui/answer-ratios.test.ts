@@ -33,6 +33,24 @@ test('fixed text survives checkpoints and overrides existing text only on its co
   assert.throws(() => validateFill({ ...settings, fixedTextAnswers: [{ questionId: 'q1', page: 1, text: ' ' }] }));
 });
 
+test('short text samples one nonblank line per response; paragraphs keep their newlines', async () => {
+  const textQuestion: Question = { ...question, kind: 'text', choices: [] };
+  const text = '  Trường A  \r\n\r\n Trường B \n \nTrường C\r';
+  const settings = validateFill(JSON.parse(JSON.stringify({ ...DEFAULT_FILL, fixedTextAnswers: [{ questionId: 'q1', page: 1, text }] })));
+  const signal = new AbortController().signal;
+  const random = Math.random;
+  try {
+    const picked = [];
+    for (const [index, value] of [0, 0.5, 0.999].entries()) {
+      Math.random = () => value;
+      picked.push((await planAnswer(textQuestion, settings, signal, 1, index, 3))?.text);
+    }
+    assert.deepEqual(picked, ['Trường A', 'Trường B', 'Trường C']);
+    assert.equal((await planAnswer({ ...textQuestion, kind: 'paragraph' }, settings, signal))?.text, text);
+    await assert.rejects(() => planAnswer(textQuestion, { ...settings, fixedTextAnswers: [{ questionId: 'q1', page: 1, text: '\n \r\n' }] }, signal), /trống/);
+  } finally { Math.random = random; }
+});
+
 test('ratios reject incomplete totals, duplicates and invalid selections', () => {
   assert.throws(() => validateAnswerRatios([{ questionId: 'q1', page: 1, choices: [{ choiceId: 'a', percent: 50 }, { choiceId: 'b', percent: 50 }, { choiceId: 'c', percent: 0 }] }, { questionId: 'q1', page: 1, choices: [{ choiceId: 'a', percent: 100 }] }]));
   assert.throws(() => validateAnswerRatios([{ questionId: 'q1', page: 0, choices: [{ choiceId: 'a', percent: 60 }, { choiceId: 'b', percent: 40 }] }]));
