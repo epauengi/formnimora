@@ -10,7 +10,7 @@
     <a href="#ai-の設定任意">AI の設定</a>
   </p>
   <p>
-    <img src="https://img.shields.io/badge/version-1.1.0-2548D8?style=flat-square" alt="バージョン 1.1.0" />
+    <img src="https://img.shields.io/badge/version-1.2.0-2548D8?style=flat-square" alt="バージョン 1.2.0" />
     <img src="https://img.shields.io/badge/Chrome-120%2B-334155?style=flat-square" alt="Chrome 120 以上が必要です" />
     <img src="https://img.shields.io/badge/Manifest-V3-334155?style=flat-square" alt="Chrome Manifest V3" />
   </p>

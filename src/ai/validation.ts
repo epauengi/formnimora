@@ -52,6 +52,22 @@ export function validateAPI(value: unknown): APISettings {
   };
 }
 
+export function validateAnswerRatios(value: unknown): NonNullable<FillSettings['answerRatios']> {
+  if (!Array.isArray(value) || value.length > 100 || JSON.stringify(value).length > 50000) throw new Error('Invalid answer ratios.');
+  const result = value.map(value => {
+    const v = object(value);
+    if (!Array.isArray(v.choices) || !v.choices.length || v.choices.length > 100) throw new Error('Invalid answer ratio choices.');
+    const choices = v.choices.map(value => {
+      const choice = object(value);
+      return { choiceId: text(choice.choiceId, 128, 1), percent: number(choice.percent, 0, 100, true) };
+    });
+    if (new Set(choices.map(choice => choice.choiceId)).size !== choices.length || choices.reduce((sum, choice) => sum + choice.percent, 0) !== 100) throw new Error('Answer ratio percentages must total 100.');
+    return { questionId: text(v.questionId, 128, 1), choices };
+  });
+  if (new Set(result.map(ratio => ratio.questionId)).size !== result.length) throw new Error('Duplicate answer ratio questions.');
+  return result;
+}
+
 export function validateFixedAnswers(value: unknown): FixedAnswer[] {
   if (!Array.isArray(value) || value.length > 100 || JSON.stringify(value).length > 50000) throw new Error('Invalid fixed answers.');
   const ids = (value: unknown): string[] => {
@@ -96,6 +112,7 @@ export function validateFill(value: unknown): FillSettings {
     personalContext: text(v.personalContext, 6000), answerLength: oneOf(v.answerLength, ['short', 'medium', 'long']),
     language: oneOf(v.language, ['auto', 'vi', 'en']), dark: boolean(v.dark),
     ...(v.fixedAnswers !== undefined ? { fixedAnswers: validateFixedAnswers(v.fixedAnswers) } : {}),
+    ...(v.answerRatios !== undefined ? { answerRatios: validateAnswerRatios(v.answerRatios) } : {}),
   };
 }
 

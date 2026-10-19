@@ -10,7 +10,7 @@
     <a href="#optional-ai-setup">AI setup</a>
   </p>
   <p>
-    <img src="https://img.shields.io/badge/version-1.1.0-2548D8?style=flat-square" alt="Version 1.1.0" />
+    <img src="https://img.shields.io/badge/version-1.2.0-2548D8?style=flat-square" alt="Version 1.2.0" />
     <img src="https://img.shields.io/badge/Chrome-120%2B-334155?style=flat-square" alt="Requires Chrome 120 or later" />
     <img src="https://img.shields.io/badge/Manifest-V3-334155?style=flat-square" alt="Chrome Manifest V3" />
   </p>

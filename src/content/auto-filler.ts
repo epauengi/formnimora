@@ -130,6 +130,7 @@ export class AutoFillEngine {
     validateFillSettings(settings);
     if (settings.autoSubmit && (!settings.autoNext || settings.preview)) throw new Error('Điền & gửi cần chuyển trang tự động và tắt xem trước.');
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) throw new Error('Số phản hồi phải từ 1–100.');
+    if (settings.autoSubmit) this.validateRatios(settings, quantity);
     this.settings = structuredClone(settings);
     this.formUrl = toViewformUrl(this.currentUrl());
     this.state = { ...initial(), target: settings.autoSubmit ? quantity : 1 };
@@ -154,6 +155,18 @@ export class AutoFillEngine {
     this.controller = new AbortController();
     this.state.phase = 'filling';
     void this.run(this.controller, true);
+  }
+  private validateRatios(settings: FillSettings, quantity: number) {
+    const ratios = settings.answerRatios || [];
+    if (!ratios.length) return;
+    const questions = scanForm().map(item => item.question);
+    for (const ratio of ratios) {
+      const question = questions.find(item => item.id === ratio.questionId);
+      if (!question) continue;
+      if (!['radio', 'dropdown', 'scale'].includes(question.kind) || question.choices.length !== ratio.choices.length || ratio.choices.some(item => !question.choices.some(choice => choice.id === item.choiceId))) throw new Error('Tỉ lệ không khớp lựa chọn câu hỏi hiện tại. Quét lại câu hỏi.');
+      if (ratio.choices.some(item => !Number.isInteger(item.percent) || item.percent < 0 || item.percent > 100) || ratio.choices.reduce((sum, item) => sum + item.percent, 0) !== 100) throw new Error('Tỉ lệ mỗi câu hỏi phải cộng đúng 100%.');
+    }
+    if (quantity < 1 || quantity > 100) throw new Error('Số phản hồi phải từ 1–100.');
   }
   private async run(controller: AbortController, applyPreview = false, resumed = false) {
     const signal = controller.signal;
@@ -195,7 +208,7 @@ export class AutoFillEngine {
             }
             const question = this.state.questions.find(question => question.id === item.question.id) || item.question;
             try {
-              const answer = await planAnswer(question, this.settings, signal, this.state.page);
+              const answer = await planAnswer(question, this.settings, signal, this.state.page, this.state.submitted || 0, this.state.target || 1);
               if (answer) this.state.answers.push(answer);
             } catch (error) {
               signal.throwIfAborted();
@@ -218,8 +231,8 @@ export class AutoFillEngine {
               try {
                 const item = scanForm().find(item => item.question.id === answer.questionId);
                 if (!item) throw new Error('Câu hỏi đã biến mất khỏi DOM.');
-                const fixed = this.settings.fixedAnswers?.some(fixed => fixed.questionId === answer.questionId && fixed.page === this.state.page);
-                if (attempt === 0 && this.settings.skipAnswered && item.question.answered && !fixed) break;
+                const configured = this.settings.fixedAnswers?.some(fixed => fixed.questionId === answer.questionId && fixed.page === this.state.page) || this.settings.answerRatios?.some(ratio => ratio.questionId === answer.questionId);
+                if (attempt === 0 && this.settings.skipAnswered && item.question.answered && !configured) break;
                 validateAnswer(item.question, answer);
                 await this.fill(item, answer, signal); break;
               } catch (error) {

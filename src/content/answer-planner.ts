@@ -1,5 +1,5 @@
 import type { Answer, Choice, FillSettings, Question, Result } from '../types';
-import { validateFixedAnswers } from '../ai/validation';
+import { validateAnswerRatios, validateFixedAnswers } from '../ai/validation';
 export function choose(options: Choice[], count: number, rule?: string[]): string[] {
   if (!options.length) throw new Error('Không tìm thấy lựa chọn hợp lệ.');
   if (rule?.length) {
@@ -11,6 +11,14 @@ export function choose(options: Choice[], count: number, rule?: string[]): strin
     const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   return pool.slice(0, Math.min(count, pool.length)).map(option => option.id);
+}
+export function allocateRatioChoices(choices: Choice[], percentages: number[], responseCount: number): string[] {
+  const allocations = choices.map((choice, index) => ({ choice, count: Math.floor(responseCount * percentages[index] / 100), remainder: responseCount * percentages[index] % 100 }));
+  let remaining = responseCount - allocations.reduce((sum, item) => sum + item.count, 0);
+  [...allocations].sort((a, b) => b.remainder - a.remainder || choices.indexOf(a.choice) - choices.indexOf(b.choice)).slice(0, remaining).forEach(item => item.count++);
+  return allocations.flatMap(item => Array.from({ length: item.count }, (_, index) => ({ id: item.choice.id, position: (index + 0.5) / item.count })))
+    .sort((a, b) => a.position - b.position || choices.findIndex(choice => choice.id === a.id) - choices.findIndex(choice => choice.id === b.id))
+    .map(item => item.id);
 }
 export function validateAnswer(question: Question, answer: Answer): void {
   if (answer.questionId !== question.id || answer.error) throw new Error('Câu trả lời không khớp câu hỏi.');
@@ -28,11 +36,17 @@ export function validateAnswer(question: Question, answer: Answer): void {
     question.rows.forEach(row => validate(answer.rows![row.id], row.choices, question.kind === 'checkbox-grid'));
   } else validate(answer.choices, question.choices, question.kind === 'checkbox');
 }
-export async function planAnswer(question: Question, settings: FillSettings, signal: AbortSignal, page = 1): Promise<Answer | undefined> {
+export async function planAnswer(question: Question, settings: FillSettings, signal: AbortSignal, page = 1, responseIndex = 0, responseCount = 1): Promise<Answer | undefined> {
   signal.throwIfAborted();
   const countFor = (choices: Choice[]) => settings.mode === 'random' && (question.kind === 'checkbox' || question.kind === 'checkbox-grid')
     ? 1 + Math.floor(Math.random() * choices.length)
     : question.kind === 'checkbox' || question.kind === 'checkbox-grid' ? settings.checkboxCount : 1;
+  const ratio = settings.answerRatios?.find(answer => answer.questionId === question.id);
+  if (ratio) {
+    if (!['radio', 'dropdown', 'scale'].includes(question.kind) || ratio.choices.length !== question.choices.length || ratio.choices.some(item => !question.choices.some(choice => choice.id === item.choiceId)) || !Number.isInteger(responseIndex) || responseIndex < 0 || responseIndex >= responseCount) throw new Error('Tỉ lệ không khớp lựa chọn câu hỏi hiện tại.');
+    const ordered = allocateRatioChoices(question.choices, question.choices.map(choice => ratio.choices.find(item => item.choiceId === choice.id)!.percent), responseCount);
+    return { questionId: question.id, choices: [ordered[responseIndex]] };
+  }
   const fixed = settings.fixedAnswers?.find(answer => answer.questionId === question.id && answer.page === page);
   if (fixed) {
     if (['text', 'paragraph', 'unsupported'].includes(question.kind)) throw new Error('Đáp án cố định chỉ hỗ trợ câu trắc nghiệm.');
@@ -59,6 +73,7 @@ export async function planAnswer(question: Question, settings: FillSettings, sig
 }
 export function validateFillSettings(value: FillSettings): void {
   if (value?.fixedAnswers !== undefined) validateFixedAnswers(value.fixedAnswers);
+  if (value?.answerRatios !== undefined) validateAnswerRatios(value.answerRatios);
   if (!value || !['random', 'rules', 'ai'].includes(value.mode) || !Number.isInteger(value.delay) || value.delay < 0 || value.delay > 5000 || !Number.isInteger(value.checkboxCount) || value.checkboxCount < 1 || value.checkboxCount > 20 || !Array.isArray(value.rules) || value.rules.length > 100 || value.rules.some(rule => typeof rule.contains !== 'string' || !Array.isArray(rule.answers) || rule.answers.some(answer => typeof answer !== 'string')) || typeof value.personalContext !== 'string' || value.personalContext.length > 6000 || !['short', 'medium', 'long'].includes(value.answerLength) || !['auto', 'vi', 'en'].includes(value.language) || ['aiText', 'autoNext', 'autoSubmit', 'skipAnswered', 'preview', 'dark'].some(key => typeof value[key as keyof FillSettings] !== 'boolean')) {
     throw new Error('Cấu hình điền biểu mẫu không hợp lệ.');
   }

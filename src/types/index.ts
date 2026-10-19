@@ -8,10 +8,12 @@ export interface Question {
 export interface Answer { questionId: string; text?: string; choices?: string[]; rows?: Record<string, string[]>; error?: string }
 export interface Rule { contains: string; answers: string[] }
 export interface FixedAnswer { questionId: string; page: number; choices?: string[]; rows?: Record<string, string[]> }
+export interface AnswerRatio { questionId: string; choices: { choiceId: string; percent: number }[] }
 export interface FillSettings {
   mode: 'random' | 'rules' | 'ai'; aiText: boolean; delay: number; checkboxCount: number;
   autoNext: boolean; autoSubmit: boolean; skipAnswered: boolean; preview: boolean; rules: Rule[];
   fixedAnswers?: FixedAnswer[];
+  answerRatios?: AnswerRatio[];
   personalContext: string; answerLength: 'short' | 'medium' | 'long'; language: 'auto' | 'vi' | 'en'; dark: boolean;
 }
 export interface APISettings {
