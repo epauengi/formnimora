@@ -56,15 +56,28 @@ export function validateAnswerRatios(value: unknown): NonNullable<FillSettings['
   if (!Array.isArray(value) || value.length > 100 || JSON.stringify(value).length > 50000) throw new Error('Invalid answer ratios.');
   const result = value.map(value => {
     const v = object(value);
+    const page = number(v.page, 1, 20, true);
     if (!Array.isArray(v.choices) || !v.choices.length || v.choices.length > 100) throw new Error('Invalid answer ratio choices.');
     const choices = v.choices.map(value => {
       const choice = object(value);
       return { choiceId: text(choice.choiceId, 128, 1), percent: number(choice.percent, 0, 100, true) };
     });
     if (new Set(choices.map(choice => choice.choiceId)).size !== choices.length || choices.reduce((sum, choice) => sum + choice.percent, 0) !== 100) throw new Error('Answer ratio percentages must total 100.');
-    return { questionId: text(v.questionId, 128, 1), choices };
+    return { questionId: text(v.questionId, 128, 1), page, choices };
   });
-  if (new Set(result.map(ratio => ratio.questionId)).size !== result.length) throw new Error('Duplicate answer ratio questions.');
+  if (new Set(result.map(ratio => `${ratio.page}:${ratio.questionId}`)).size !== result.length) throw new Error('Duplicate answer ratio questions.');
+  return result;
+}
+
+export function validateFixedTextAnswers(value: unknown): NonNullable<FillSettings['fixedTextAnswers']> {
+  if (!Array.isArray(value) || value.length > 100 || JSON.stringify(value).length > 50000) throw new Error('Invalid fixed text answers.');
+  const result = value.map(value => {
+    const v = object(value);
+    const answer = text(v.text, 12000, 1);
+    if (!answer.trim()) throw new Error('Fixed text answer must not be blank.');
+    return { questionId: text(v.questionId, 128, 1), page: number(v.page, 1, 20, true), text: answer };
+  });
+  if (new Set(result.map(answer => `${answer.page}:${answer.questionId}`)).size !== result.length) throw new Error('Duplicate fixed text answers.');
   return result;
 }
 
@@ -113,6 +126,7 @@ export function validateFill(value: unknown): FillSettings {
     language: oneOf(v.language, ['auto', 'vi', 'en']), dark: boolean(v.dark),
     ...(v.fixedAnswers !== undefined ? { fixedAnswers: validateFixedAnswers(v.fixedAnswers) } : {}),
     ...(v.answerRatios !== undefined ? { answerRatios: validateAnswerRatios(v.answerRatios) } : {}),
+    ...(v.fixedTextAnswers !== undefined ? { fixedTextAnswers: validateFixedTextAnswers(v.fixedTextAnswers) } : {}),
   };
 }
 
@@ -140,7 +154,11 @@ export function validateQuestion(value: unknown): Question {
   const question: Question = {
     id: text(v.id, 128, 1), title: text(v.title, 8000, 1), kind, choices: choices(v.choices), rows,
     answered: boolean(v.answered), required: boolean(v.required),
+    ...(v.minChoices !== undefined ? { minChoices: number(v.minChoices, 1, 100, true) } : {}),
+    ...(v.maxChoices !== undefined ? { maxChoices: number(v.maxChoices, 1, 100, true) } : {}),
   };
+  if ((question.minChoices !== undefined || question.maxChoices !== undefined) && kind !== 'checkbox') throw new Error('Invalid question structure.');
+  if ((question.minChoices ?? 1) > (question.maxChoices ?? question.choices.length) && kind === 'checkbox') throw new Error('Invalid question structure.');
   const grid = kind.endsWith('-grid');
   if (grid ? !rows.length || rows.some(row => !row.choices.length) : rows.length > 0) throw new Error('Invalid question structure.');
   if (!grid && kind !== 'text' && kind !== 'paragraph' && !question.choices.length) throw new Error('Question has no choices.');

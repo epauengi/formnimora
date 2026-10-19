@@ -494,7 +494,8 @@ summary::marker { color: var(--accent); }
 .auto-fill-options .status-pill { margin-left: 6px; }
 .auto-fill-options > .muted { margin-bottom: 14px; }
 .auto-fill-options > button { margin-bottom: 4px; }
-.fixed-answer-options, .ratio-options { margin-bottom: 14px; }
+.fixed-answer-options, .ratio-options, .fixed-text-options { margin-bottom: 14px; }
+.fixed-text-options > summary { padding-inline: 0; }
 .ratio-options > summary { padding-inline: 0; }
 .ratio-options .question { margin-block: 10px; }
 .ratio-options h3 { margin-bottom: 8px; overflow-wrap: anywhere; }

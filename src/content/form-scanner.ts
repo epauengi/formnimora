@@ -1,6 +1,7 @@
 import type { Choice, Question } from '../types';
 import { classifyQuestion, TEXT_SELECTOR } from './question-detector';
 import { checked, enabled, hash, label, visible } from './dom-utils';
+import { choiceLimits, readItem } from './form-metadata';
 export interface DOMQuestion {
   question: Question; root: HTMLElement; text?: HTMLInputElement | HTMLTextAreaElement | HTMLElement;
   controls: Map<string, HTMLElement>; rowControls: Map<string, Map<string, HTMLElement>>; dropdown?: HTMLElement;
@@ -8,7 +9,7 @@ export interface DOMQuestion {
 const CHOICE_SELECTOR = '[role="radio"], [role="checkbox"], input[type="radio"], input[type="checkbox"]';
 function choices(elements: Element[]): { choices: Choice[]; controls: Map<string, HTMLElement> } {
   const controls = new Map<string, HTMLElement>();
-  const result = elements.filter(el => enabled(el) && !/^(other|other:|khác|khác:)$/i.test(label(el))).map((el, index) => {
+  const result = elements.filter(el => enabled(el) && el.getAttribute('data-value') !== '__other_option__' && !/^(?:other\s*:?|khác\s*:?|mục khác\s*:?)$/i.test(label(el))).map((el, index) => {
     const text = label(el);
     const id = `c${index}-${hash(text)}`;
     controls.set(id, el as HTMLElement);
@@ -47,9 +48,11 @@ export function scanForm(doc: Document = document): DOMQuestion[] {
       : kind === 'text' || kind === 'paragraph' ? !!textValue?.trim()
       : kind === 'dropdown' ? (dropdown instanceof HTMLSelectElement ? !!dropdown.value : isAnswered([...selection.controls.values()]))
       : isAnswered([...selection.controls.values()]);
+    const item = readItem(root);
     const question: Question = {
-      id: `q${index}-${hash(title + kind)}`, title, kind, choices: kind.endsWith('grid') ? [] : selection.choices,
+      id: item && Number.isSafeInteger(item[0]) ? `item-${item[0]}` : `q${index}-${hash(title + kind)}`, title, kind, choices: kind.endsWith('grid') ? [] : selection.choices,
       rows, answered, required: !!root.querySelector('[aria-required="true"], [required]') || /\*\s*$/.test(heading?.textContent || ''),
+      ...(item ? choiceLimits(item) : {}),
     };
     return { question, root, text, controls: selection.controls, rowControls, dropdown };
   });

@@ -1,5 +1,5 @@
 export function enabled(el: Element): boolean {
-  return !el.closest('[aria-disabled="true"], [disabled], [inert]');
+  return !el.closest('[aria-disabled="true"], [disabled], [inert], [jscontroller].RDPZE');
 }
 export function visible(el: Element): boolean {
   if (el.closest('[hidden], [aria-hidden="true"]')) return false;

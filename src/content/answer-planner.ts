@@ -1,5 +1,5 @@
 import type { Answer, Choice, FillSettings, Question, Result } from '../types';
-import { validateAnswerRatios, validateFixedAnswers } from '../ai/validation';
+import { validateAnswerRatios, validateFixedAnswers, validateFixedTextAnswers } from '../ai/validation';
 export function choose(options: Choice[], count: number, rule?: string[]): string[] {
   if (!options.length) throw new Error('Không tìm thấy lựa chọn hợp lệ.');
   if (rule?.length) {
@@ -30,6 +30,7 @@ export function validateAnswer(question: Question, answer: Answer): void {
     if (!Array.isArray(ids) || !ids.length || ids.length > choices.length || new Set(ids).size !== ids.length || ids.some(id => typeof id !== 'string' || !choices.some(choice => choice.id === id)) || (!multiple && ids.length !== 1)) {
       throw new Error('Đáp án phải thuộc danh sách lựa chọn hiện tại.');
     }
+    if (multiple && ((question.minChoices !== undefined && ids.length < question.minChoices) || (question.maxChoices !== undefined && ids.length > question.maxChoices))) throw new Error('Số lựa chọn không đáp ứng giới hạn của câu hỏi.');
   }
   if (question.kind.endsWith('grid')) {
     if (!answer.rows || Object.keys(answer.rows).length !== question.rows.length) throw new Error('Thiếu hàng trong bảng.');
@@ -38,10 +39,14 @@ export function validateAnswer(question: Question, answer: Answer): void {
 }
 export async function planAnswer(question: Question, settings: FillSettings, signal: AbortSignal, page = 1, responseIndex = 0, responseCount = 1): Promise<Answer | undefined> {
   signal.throwIfAborted();
-  const countFor = (choices: Choice[]) => settings.mode === 'random' && (question.kind === 'checkbox' || question.kind === 'checkbox-grid')
-    ? 1 + Math.floor(Math.random() * choices.length)
-    : question.kind === 'checkbox' || question.kind === 'checkbox-grid' ? settings.checkboxCount : 1;
-  const ratio = settings.answerRatios?.find(answer => answer.questionId === question.id);
+  const countFor = (choices: Choice[]) => {
+    const maxAllowed = Math.min(choices.length, question.maxChoices ?? choices.length);
+    const minAllowed = Math.max(1, question.minChoices ?? 1);
+    if (maxAllowed < minAllowed) throw new Error('Giới hạn số lựa chọn không hợp lệ.');
+    if (settings.mode === 'random' && (question.kind === 'checkbox' || question.kind === 'checkbox-grid')) return minAllowed + Math.floor(Math.random() * (maxAllowed - minAllowed + 1));
+    return question.kind === 'checkbox' || question.kind === 'checkbox-grid' ? Math.max(minAllowed, Math.min(settings.checkboxCount, maxAllowed)) : 1;
+  };
+  const ratio = settings.answerRatios?.find(answer => answer.questionId === question.id && answer.page === page);
   if (ratio) {
     if (!['radio', 'dropdown', 'scale'].includes(question.kind) || ratio.choices.length !== question.choices.length || ratio.choices.some(item => !question.choices.some(choice => choice.id === item.choiceId)) || !Number.isInteger(responseIndex) || responseIndex < 0 || responseIndex >= responseCount) throw new Error('Tỉ lệ không khớp lựa chọn câu hỏi hiện tại.');
     const ordered = allocateRatioChoices(question.choices, question.choices.map(choice => ratio.choices.find(item => item.choiceId === choice.id)!.percent), responseCount);
@@ -54,6 +59,13 @@ export async function planAnswer(question: Question, settings: FillSettings, sig
     const answer: Answer = structuredClone({ questionId: fixed.questionId, ...(fixed.choices ? { choices: fixed.choices } : {
       rows: Object.fromEntries(question.rows.map(row => [row.id, fixed.rows?.[row.id] || choose(row.choices, countFor(row.choices))])),
     }) });
+    validateAnswer(question, answer);
+    return answer;
+  }
+  const fixedText = settings.fixedTextAnswers?.find(answer => answer.questionId === question.id && answer.page === page);
+  if (fixedText) {
+    if (!['text', 'paragraph'].includes(question.kind)) throw new Error('Đáp án văn bản không khớp câu hỏi.');
+    const answer = { questionId: question.id, text: fixedText.text };
     validateAnswer(question, answer);
     return answer;
   }
@@ -74,6 +86,7 @@ export async function planAnswer(question: Question, settings: FillSettings, sig
 export function validateFillSettings(value: FillSettings): void {
   if (value?.fixedAnswers !== undefined) validateFixedAnswers(value.fixedAnswers);
   if (value?.answerRatios !== undefined) validateAnswerRatios(value.answerRatios);
+  if (value?.fixedTextAnswers !== undefined) validateFixedTextAnswers(value.fixedTextAnswers);
   if (!value || !['random', 'rules', 'ai'].includes(value.mode) || !Number.isInteger(value.delay) || value.delay < 0 || value.delay > 5000 || !Number.isInteger(value.checkboxCount) || value.checkboxCount < 1 || value.checkboxCount > 20 || !Array.isArray(value.rules) || value.rules.length > 100 || value.rules.some(rule => typeof rule.contains !== 'string' || !Array.isArray(rule.answers) || rule.answers.some(answer => typeof answer !== 'string')) || typeof value.personalContext !== 'string' || value.personalContext.length > 6000 || !['short', 'medium', 'long'].includes(value.answerLength) || !['auto', 'vi', 'en'].includes(value.language) || ['aiText', 'autoNext', 'autoSubmit', 'skipAnswered', 'preview', 'dark'].some(key => typeof value[key as keyof FillSettings] !== 'boolean')) {
     throw new Error('Cấu hình điền biểu mẫu không hợp lệ.');
   }

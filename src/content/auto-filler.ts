@@ -3,6 +3,7 @@ import { DEFAULT_FILL } from '../types';
 import { checked, enabled, setText, sleep, visible } from './dom-utils';
 import { pageSignature, scanForm, type DOMQuestion } from './form-scanner';
 import { planAnswer, validateAnswer, validateFillSettings } from './answer-planner';
+import { allFormQuestions, formPage } from './form-metadata';
 
 export function toViewformUrl(urlStr: string): string {
   try {
@@ -42,7 +43,11 @@ export class AutoFillEngine {
   private formUrl = '';
   private resumeAfterConfirm = false;
   private log(message: string) { this.state.logs = [...this.state.logs.slice(-49), message]; }
-  private scan() { this.state.questions = scanForm().map(item => item.question); }
+  private scan() {
+    this.state.questions = scanForm().map(item => item.question);
+    this.state.page = formPage(document, this.state.page);
+    this.state.formPages = allFormQuestions();
+  }
   private async clearRun() { await chrome.runtime.sendMessage({ type: 'CLEAR_RUN' }); }
   resume(settings: FillSettings, state: EngineState, resumeAfterConfirm = false, formUrl?: string) {
     if (this.controller || this.state.phase !== 'idle') return;
@@ -130,7 +135,11 @@ export class AutoFillEngine {
     validateFillSettings(settings);
     if (settings.autoSubmit && (!settings.autoNext || settings.preview)) throw new Error('Điền & gửi cần chuyển trang tự động và tắt xem trước.');
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) throw new Error('Số phản hồi phải từ 1–100.');
-    if (settings.autoSubmit) this.validateRatios(settings, quantity);
+    if (settings.autoSubmit) {
+      this.validateRatios(settings, quantity);
+      const missingText = scanForm().find(item => ['text', 'paragraph'].includes(item.question.kind) && item.question.required && !item.question.answered && !settings.aiText && !settings.fixedTextAnswers?.some(answer => answer.questionId === item.question.id && answer.page === formPage()));
+      if (missingText) throw new Error(`Cần nhập Đáp án văn bản hoặc bật AI: ${missingText.question.title}`);
+    }
     this.settings = structuredClone(settings);
     this.formUrl = toViewformUrl(this.currentUrl());
     this.state = { ...initial(), target: settings.autoSubmit ? quantity : 1 };
@@ -159,10 +168,13 @@ export class AutoFillEngine {
   private validateRatios(settings: FillSettings, quantity: number) {
     const ratios = settings.answerRatios || [];
     if (!ratios.length) return;
+    const pages = allFormQuestions();
     const questions = scanForm().map(item => item.question);
     for (const ratio of ratios) {
-      const question = questions.find(item => item.id === ratio.questionId);
-      if (!question) continue;
+      const question = pages.length ? pages.find(page => page.page === ratio.page)?.questions.find(item => item.id === ratio.questionId)
+        : ratio.page === formPage() ? questions.find(item => item.id === ratio.questionId) : undefined;
+      if (!question && !pages.length) continue;
+      if (!question) throw new Error(`Không tìm thấy câu hỏi đặt tỉ lệ ở trang ${ratio.page}. Quét lại câu hỏi.`);
       if (!['radio', 'dropdown', 'scale'].includes(question.kind) || question.choices.length !== ratio.choices.length || ratio.choices.some(item => !question.choices.some(choice => choice.id === item.choiceId))) throw new Error('Tỉ lệ không khớp lựa chọn câu hỏi hiện tại. Quét lại câu hỏi.');
       if (ratio.choices.some(item => !Number.isInteger(item.percent) || item.percent < 0 || item.percent > 100) || ratio.choices.reduce((sum, item) => sum + item.percent, 0) !== 100) throw new Error('Tỉ lệ mỗi câu hỏi phải cộng đúng 100%.');
     }
@@ -172,6 +184,15 @@ export class AutoFillEngine {
     const signal = controller.signal;
     let navigationPending = false;
     try {
+      if (!applyPreview) {
+        // Forms can still be hydrating after document_idle; never click disabled controllers.
+        for (let attempt = 0; ; attempt++) {
+          const pending = [...document.querySelectorAll('[jscontroller].RDPZE')].some(visible);
+          if (!pending) break;
+          if (attempt >= 150) throw new Error('Biểu mẫu chưa tải xong các lựa chọn. Thử tải lại trang; chưa gửi.');
+          await sleep(100, signal);
+        }
+      }
       if (resumed) {
         // Navigation may mount before questions. Never treat Send alone as readiness.
         // ponytail: empty resumed sections stop for manual review; automatic empty-section handling needs a reliable Forms readiness signal.
@@ -231,7 +252,7 @@ export class AutoFillEngine {
               try {
                 const item = scanForm().find(item => item.question.id === answer.questionId);
                 if (!item) throw new Error('Câu hỏi đã biến mất khỏi DOM.');
-                const configured = this.settings.fixedAnswers?.some(fixed => fixed.questionId === answer.questionId && fixed.page === this.state.page) || this.settings.answerRatios?.some(ratio => ratio.questionId === answer.questionId);
+                const configured = this.settings.fixedAnswers?.some(fixed => fixed.questionId === answer.questionId && fixed.page === this.state.page) || this.settings.answerRatios?.some(ratio => ratio.questionId === answer.questionId && ratio.page === this.state.page) || this.settings.fixedTextAnswers?.some(fixed => fixed.questionId === answer.questionId && fixed.page === this.state.page);
                 if (attempt === 0 && this.settings.skipAnswered && item.question.answered && !configured) break;
                 validateAnswer(item.question, answer);
                 await this.fill(item, answer, signal); break;
@@ -320,7 +341,7 @@ export class AutoFillEngine {
         await this.waitForPage(before, previousHeadings, signal);
         await this.clearRun();
         navigationPending = false;
-        this.state.page++; applyPreview = false;
+        this.state.page = formPage(document, this.state.page + 1); applyPreview = false;
       }
       this.state.phase = 'done'; this.log('Đã hoàn tất điền. Kiểm tra form và tự xác nhận gửi.');
     } catch (error) {
@@ -353,7 +374,10 @@ export class AutoFillEngine {
     const invalid = [...document.querySelectorAll('[aria-invalid="true"], input:invalid, textarea:invalid, select:invalid')].some(visible);
     const captcha = [...document.querySelectorAll('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], .g-recaptcha')].some(visible);
     const missing = scanForm().some(item => item.question.required && !item.question.answered);
-    if (invalid || captcha || missing) throw new Error('Còn câu bắt buộc, dữ liệu không hợp lệ hoặc CAPTCHA. Đã dừng, chưa gửi.');
+    if (invalid || captcha || missing) {
+      const titles = scanForm().filter(item => (item.question.required && !item.question.answered) || item.root.querySelector('[aria-invalid="true"], input:invalid, textarea:invalid, select:invalid')).map(item => item.question.title);
+      throw new Error(`Còn câu bắt buộc, dữ liệu không hợp lệ hoặc CAPTCHA. Đã dừng, chưa gửi.${titles.length ? ` Kiểm tra: ${titles.join('; ')}` : ''}`);
+    }
   }
   private async waitForSubmission(signal: AbortSignal) {
     for (let attempt = 0; attempt < 80; attempt++) {
@@ -400,24 +424,21 @@ export class AutoFillEngine {
       }
       return;
     }
-    const clickOption = (control: HTMLElement) => {
-      const target = control.closest('label')?.querySelector<HTMLElement>('.aDTYNe') ?? control.closest<HTMLElement>('label') ?? control;
-      target.click();
-    };
+    // Forms binds its controller to the radio/checkbox, not the decorative caption.
     const select = async (controls: Map<string, HTMLElement>, ids: string[], multiple: boolean) => {
       if (multiple) {
         for (const [id, control] of controls) {
           signal.throwIfAborted();
           if (checked(control) !== ids.includes(id)) {
             if (!enabled(control)) throw new Error('Lựa chọn bị vô hiệu hóa.');
-            clickOption(control);
+            control.click();
             await sleep(60, signal);
           }
         }
       } else {
         const control = controls.get(ids[0]);
         if (!control || !enabled(control)) throw new Error('Không có đáp án hợp lệ.');
-        if (!checked(control)) clickOption(control);
+        if (!checked(control)) control.click();
       }
       // Forms may update aria-checked after its lazy controller finishes loading.
       for (let attempt = 0; attempt < 20; attempt++) {

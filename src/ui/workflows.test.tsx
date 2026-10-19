@@ -32,7 +32,7 @@ const applyCall = calls.find(call => call.type === 'APPLY') as { answers: { choi
 assert.deepEqual(applyCall?.answers[0].choices, ['choice-art']);
 assert.ok(document.body.textContent?.includes('Dừng điền'));
 await act(async () => { root.render(<div/>); });
-engine = { ...engine, phase: 'idle' };
+engine = { ...engine, phase: 'idle', formPages: [{ page: 1, title: 'Trang 1', questions: engine.questions }, { page: 2, title: 'Nhánh chưa mở', questions: [{ ...engine.questions[0], id: 'other-question', title: 'Câu hỏi nhánh' }] }] };
 await act(async () => { root.render(<App/>); });
 const autoOptions = document.querySelector<HTMLDetailsElement>('.auto-fill-options')!;
 assert.equal(autoOptions.open, false, 'Real submission options are secondary by default.');
@@ -48,6 +48,14 @@ const clearFixed = [...fixedOptions.querySelectorAll<HTMLButtonElement>('button'
 await act(async () => { clearFixed.click(); });
 assert.equal(fixed.value, '');
 await act(async () => { fixed.value = 'choice-art'; fixed.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+const pageSelect = [...document.querySelectorAll<HTMLSelectElement>('select')].find(select => select.closest('label')?.textContent?.includes('Trang cần cấu hình'))!;
+await act(async () => { pageSelect.value = '2'; pageSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+const ratioOptions = document.querySelector<HTMLDetailsElement>('.ratio-options')!;
+ratioOptions.open = true;
+assert.ok(ratioOptions.textContent?.includes('Câu hỏi nhánh'));
+const equalRatios = [...ratioOptions.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Chia đều')!;
+await act(async () => { equalRatios.click(); });
+assert.equal(ratioOptions.querySelectorAll('input[type="number"]').length, 2);
 assert.equal(document.querySelector('h1')?.textContent, 'FormNimora');
 dom.window.confirm = () => false;
 calls.length = 0;
@@ -59,6 +67,7 @@ const start = calls.find(call => call.type === 'START') as unknown as { settings
 assert.equal(start.settings.autoSubmit, true); assert.equal(start.settings.autoNext, true);
 assert.equal(start.settings.preview, false); assert.equal(start.settings.mode, 'random');
 assert.deepEqual(start.settings.fixedAnswers, [{ questionId: 'q1', page: 2, choices: ['choice-art'] }]);
+assert.deepEqual(start.settings.answerRatios, [{ questionId: 'other-question', page: 2, choices: [{ choiceId: 'choice-math', percent: 50 }, { choiceId: 'choice-art', percent: 50 }] }]);
 assert.equal(calls.some(call => call.type === 'SAVE_FILL'), false);
 await act(async () => { root.render(<Settings/>); });
 calls.length = 0;
