@@ -41,7 +41,7 @@ export function Header({ settings, children }: { settings?: boolean; children?: 
   return <header className="app-header"><div className="brand"><svg className="brand-mark" width="38" height="38" viewBox="0 0 256 256" fill="none" aria-hidden="true"><g fill="#2548D8"><rect x="44" y="45" width="24" height="24" rx="8"/><rect x="88" y="45" width="124" height="24" rx="12"/><rect x="44" y="101" width="24" height="24" rx="8"/><rect x="88" y="101" width="88" height="24" rx="12"/><rect x="44" y="157" width="24" height="24" rx="8"/></g><path d="M88 169h62l22-22h37" stroke="#2548D8" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round"/><circle cx="211" cy="147" r="10" fill="#FFAD42"/></svg><div><h1>FormNimora</h1><p>{settings ? 'Cài đặt tiện ích' : 'Điền biểu mẫu, có kiểm soát'}</p></div></div>{children}</header>;
 }
 export function Notice({ error, busy, message }: { error?: string; busy?: string; message?: string }) {
-  return <div aria-live="polite" aria-atomic="true" className={error ? 'notice error' : busy || message ? 'notice' : 'live-empty'}>{error || busy || message || ''}</div>;
+  return <div role={error ? 'alert' : 'status'} aria-live={error ? 'assertive' : 'polite'} aria-atomic="true" className={error ? 'notice error' : busy || message ? 'notice' : 'live-empty'}>{error || busy || message || ''}</div>;
 }
 export function AIWarning() {
   return <p className="privacy-note">Khi dùng AI hoặc bật AI cho câu hỏi văn bản, nội dung câu hỏi và ngữ cảnh cá nhân sẽ được gửi tới nhà cung cấp API đã cấu hình. Không dùng với dữ liệu nhạy cảm nếu chưa được phép.</p>;
